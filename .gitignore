@@ -1,0 +1,12 @@
+node_modules/
+.next/
+data/*.db
+data/*.db-*
+public/generated/
+public/imports/
+coverage/
+.env*
+*.log
+tsconfig.tsbuildinfo
+AGENTS.md
+CLAUDE.md

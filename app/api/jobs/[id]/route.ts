@@ -1,0 +1,3 @@
+import { generationService } from "@/lib/services";
+export async function GET(_:Request,{params}:{params:Promise<{id:string}>}){ return Response.json(generationService.advance((await params).id)); }
+export async function POST(request:Request,{params}:{params:Promise<{id:string}>}){ const {action}=await request.json() as {action:string}; const id=(await params).id; if(action==="cancel") return Response.json(generationService.cancel(id)); if(action==="retry") return Response.json(generationService.retry(id)); return Response.json({error:"Unknown job action"},{status:400}); }

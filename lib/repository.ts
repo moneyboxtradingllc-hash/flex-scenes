@@ -1,0 +1,32 @@
+import { randomUUID } from "node:crypto";
+import { db } from "./db";
+import type { AppSnapshot, Character, CharacterReference, Conversation, GenerationInput, GenerationJob, JobReference, MediaAsset, Message, ProviderCapabilities } from "./domain";
+
+const now = () => new Date().toISOString();
+const bool = <T extends Record<string, unknown>>(row: T) => ({ ...row, favorite: Boolean(row.favorite), isReference: Boolean(row.isReference), unread: Boolean(row.unread) });
+export class SqliteFlexRepository {
+  characters() { return db.prepare("SELECT * FROM characters ORDER BY name").all().map(bool) as unknown as Character[]; }
+  character(id: string) { return bool(db.prepare("SELECT * FROM characters WHERE id=?").get(id) as Record<string, unknown>) as unknown as Character; }
+  media() { return db.prepare("SELECT * FROM media ORDER BY createdAt DESC").all().map(bool) as unknown as MediaAsset[]; }
+  mediaByCharacter(id: string) { return db.prepare("SELECT * FROM media WHERE characterId=? ORDER BY createdAt DESC").all(id).map(bool) as unknown as MediaAsset[]; }
+  asset(id: string) { return bool(db.prepare("SELECT * FROM media WHERE id=?").get(id) as Record<string, unknown>) as unknown as MediaAsset; }
+  jobs() { return db.prepare("SELECT * FROM jobs ORDER BY createdAt DESC").all() as unknown as GenerationJob[]; }
+  job(id: string) { return db.prepare("SELECT * FROM jobs WHERE id=?").get(id) as unknown as GenerationJob; }
+  saveJob(job: GenerationJob) { db.prepare("INSERT INTO jobs VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)").run(job.id,job.characterId,job.mode,job.prompt,job.status,job.providerId,job.settingsJson,job.parentMediaId,job.conversationId,job.createdAt,job.updatedAt,job.error,job.mediaId); }
+  updateJob(id: string, patch: Partial<GenerationJob>) { const existing=this.job(id); const next={...existing,...patch,updatedAt:now()}; db.prepare("UPDATE jobs SET status=?,updatedAt=?,error=?,mediaId=? WHERE id=?").run(next.status,next.updatedAt,next.error,next.mediaId,id); return this.job(id); }
+  saveMedia(media: MediaAsset) { db.prepare("INSERT INTO media VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run(media.id,media.characterId,media.type,media.url,media.posterUrl,media.title,media.caption,media.prompt,media.providerId,media.settingsJson,media.parentId,Number(media.isReference),media.createdAt,Number(media.favorite)); }
+  toggleFavorite(id: string) { db.prepare("UPDATE media SET favorite=CASE favorite WHEN 1 THEN 0 ELSE 1 END WHERE id=?").run(id); return this.asset(id); }
+  setReference(id: string) { db.prepare("UPDATE media SET isReference=1 WHERE id=?").run(id); return this.asset(id); }
+  addCharacterReference(characterId:string,mediaId:string,role:CharacterReference["role"]="face",canonical=true) { db.prepare("INSERT INTO characterReferences VALUES(?,?,?,?,?) ON CONFLICT(characterId,mediaId,role) DO UPDATE SET canonical=excluded.canonical").run(characterId,mediaId,role,Number(canonical),now()); }
+  characterReferences(characterId?:string) { const query=characterId?"SELECT * FROM characterReferences WHERE characterId=? ORDER BY createdAt":"SELECT * FROM characterReferences ORDER BY createdAt"; return db.prepare(query).all(...(characterId?[characterId]:[])).map(row=>({...(row as object),canonical:Boolean((row as {canonical:number}).canonical)})) as CharacterReference[]; }
+  saveJobReferences(jobId:string, references: {mediaId:string;role:JobReference["role"]}[]) { for(const [position,item] of references.entries()) db.prepare("INSERT OR IGNORE INTO jobReferences VALUES(?,?,?,?)").run(jobId,item.mediaId,item.role,position); }
+  jobReferences(jobId?:string) { const query=jobId?"SELECT * FROM jobReferences WHERE jobId=? ORDER BY position":"SELECT * FROM jobReferences ORDER BY jobId,position"; return db.prepare(query).all(...(jobId?[jobId]:[])) as unknown as JobReference[]; }
+  setNote(id: string, body: string) { db.prepare("INSERT INTO notes(mediaId,body) VALUES(?,?) ON CONFLICT(mediaId) DO UPDATE SET body=excluded.body").run(id,body); }
+  conversations() { return db.prepare("SELECT * FROM conversations ORDER BY updatedAt DESC").all().map(bool) as unknown as Conversation[]; }
+  messages(conversationId: string) { return db.prepare("SELECT * FROM messages WHERE conversationId=? ORDER BY createdAt").all(conversationId) as unknown as Message[]; }
+  conversationForCharacter(characterId: string) { return this.conversations().find(c=>c.characterId===characterId); }
+  addMessage(conversationId: string, role: Message["role"], body: string) { const message={id:randomUUID(),conversationId,role,body,createdAt:now()}; db.prepare("INSERT INTO messages VALUES(?,?,?,?,?)").run(message.id,message.conversationId,message.role,message.body,message.createdAt); db.prepare("UPDATE conversations SET updatedAt=?,unread=? WHERE id=?").run(message.createdAt,role==="character"?1:0,conversationId); return message; }
+  snapshot(capabilities:ProviderCapabilities[]=[]): AppSnapshot { const collections=db.prepare("SELECT * FROM collections ORDER BY name").all() as unknown as {id:string;name:string}[]; const notes=Object.fromEntries((db.prepare("SELECT * FROM notes").all() as unknown as {mediaId:string;body:string}[]).map(x=>[x.mediaId,x.body])); return {characters:this.characters(),media:this.media(),jobs:this.jobs(),conversations:this.conversations(),messages:(db.prepare("SELECT * FROM messages ORDER BY createdAt").all() as unknown as Message[]),collections:collections.map(c=>({...c,mediaIds:(db.prepare("SELECT mediaId FROM collectionItems WHERE collectionId=?").all(c.id) as unknown as {mediaId:string}[]).map(x=>x.mediaId)})),notes,characterReferences:this.characterReferences(),jobReferences:this.jobReferences(),capabilities}; }
+  createJob(input: GenerationInput) { const createdAt=now(); const job:GenerationJob={id:randomUUID(),characterId:input.characterId,mode:input.mode,prompt:input.prompt,status:"queued",providerId:input.mode==="image"?"mock-image":"mock-video",settingsJson:JSON.stringify(input),parentMediaId:input.parentMediaId??null,conversationId:input.conversationId??null,createdAt,updatedAt:createdAt,error:null,mediaId:null}; this.saveJob(job); const references=[...(input.referenceAssetIds??[]).map(mediaId=>({mediaId,role:"scene" as const})),...(input.parentMediaId?[{mediaId:input.parentMediaId,role:"parent" as const}]:[])]; this.saveJobReferences(job.id,references); return job; }
+}
+export const repository = new SqliteFlexRepository();
