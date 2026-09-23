@@ -2,6 +2,7 @@ node_modules/
 .next/
 data/*.db
 data/*.db-*
+data/provider-secrets.json
 public/generated/
 public/imports/
 coverage/

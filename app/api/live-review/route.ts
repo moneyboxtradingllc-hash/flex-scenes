@@ -1,0 +1,5 @@
+import { NextResponse } from "next/server";
+import { governor } from "@/lib/live-governor";
+import { planFor, sanitizedPreview, seedreamSmokeRequest } from "@/lib/live-seedream";
+export async function GET(){const request=seedreamSmokeRequest();return NextResponse.json({request,preview:sanitizedPreview(request),settings:governor.settings("HotAPI"),spend:governor.spend("HotAPI"),globalLiveEnabled:governor.isGlobalLiveEnabled(),freeze:!!governor.settings("HotAPI").freeze,liveSeedanceLocked:true});}
+export async function POST(input:Request){try{const body=await input.json() as {action:string;request?:ReturnType<typeof seedreamSmokeRequest>};const request=body.request??seedreamSmokeRequest();if(body.action!=="authorize")return NextResponse.json({error:"LIVE_SUBMISSION_LOCKED_FOR_COMMISSIONING"},{status:409});const authorization=governor.authorize(planFor(request));return NextResponse.json({authorization,request,preview:sanitizedPreview(request),submission:"not submitted"});}catch(error){return NextResponse.json({error:error instanceof Error?error.message:"LIVE_REVIEW_ERROR"},{status:400});}}

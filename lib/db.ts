@@ -26,4 +26,6 @@ db.exec(`CREATE TABLE IF NOT EXISTS providerSettings (provider TEXT PRIMARY KEY,
 CREATE TABLE IF NOT EXISTS liveAuthorizations (id TEXT PRIMARY KEY,provider TEXT,deployment TEXT,requestHash TEXT,maxCost REAL,expiresAt TEXT,consumedAt TEXT);
 CREATE TABLE IF NOT EXISTS providerAssets (mediaId TEXT,provider TEXT,providerAssetId TEXT,temporaryUrl TEXT,uploadedAt TEXT,expiresAt TEXT,cleanupStatus TEXT,PRIMARY KEY(mediaId,provider));
 CREATE TABLE IF NOT EXISTS activationAudit (id TEXT PRIMARY KEY,event TEXT,detailJson TEXT,createdAt TEXT);`);
+db.exec(`CREATE TABLE IF NOT EXISTS runtimeSettings (key TEXT PRIMARY KEY,value TEXT,updatedAt TEXT);
+CREATE TABLE IF NOT EXISTS submissionIntents (id TEXT PRIMARY KEY,jobId TEXT,authorizationId TEXT,provider TEXT,deployment TEXT,requestHash TEXT,idempotencyKey TEXT,state TEXT,providerTaskId TEXT,error TEXT,createdAt TEXT,updatedAt TEXT);`);
 export { db };
