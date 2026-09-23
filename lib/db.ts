@@ -16,4 +16,10 @@ CREATE TABLE IF NOT EXISTS collectionItems (collectionId TEXT,mediaId TEXT,PRIMA
 CREATE TABLE IF NOT EXISTS notes (mediaId TEXT PRIMARY KEY,body TEXT);`);
 db.exec(`CREATE TABLE IF NOT EXISTS characterReferences (characterId TEXT,mediaId TEXT,role TEXT,canonical INTEGER DEFAULT 0,createdAt TEXT,PRIMARY KEY(characterId,mediaId,role));
 CREATE TABLE IF NOT EXISTS jobReferences (jobId TEXT,mediaId TEXT,role TEXT,position INTEGER,PRIMARY KEY(jobId,mediaId,role));`);
+db.exec(`CREATE TABLE IF NOT EXISTS characterReferenceMeta (characterId TEXT,mediaId TEXT,role TEXT,label TEXT,notes TEXT,active INTEGER DEFAULT 1,priority INTEGER DEFAULT 0,PRIMARY KEY(characterId,mediaId,role));
+CREATE TABLE IF NOT EXISTS drafts (id TEXT PRIMARY KEY,characterId TEXT,mode TEXT,payloadJson TEXT,updatedAt TEXT);
+CREATE TABLE IF NOT EXISTS usageLedger (id TEXT PRIMARY KEY,jobId TEXT,providerId TEXT,model TEXT,mediaType TEXT,estimatedCost REAL,actualCost REAL,usageJson TEXT,createdAt TEXT);
+CREATE TABLE IF NOT EXISTS conversationMemory (conversationId TEXT PRIMARY KEY,summary TEXT,pinnedFacts TEXT,contextNotes TEXT,updatedAt TEXT);
+CREATE TABLE IF NOT EXISTS messageAttachments (messageId TEXT,mediaId TEXT,kind TEXT,PRIMARY KEY(messageId,mediaId));
+CREATE TABLE IF NOT EXISTS jobEvents (id TEXT PRIMARY KEY,jobId TEXT,channel TEXT,state TEXT,message TEXT,createdAt TEXT);`);
 export { db };
