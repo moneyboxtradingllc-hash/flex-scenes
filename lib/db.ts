@@ -22,4 +22,8 @@ CREATE TABLE IF NOT EXISTS usageLedger (id TEXT PRIMARY KEY,jobId TEXT,providerI
 CREATE TABLE IF NOT EXISTS conversationMemory (conversationId TEXT PRIMARY KEY,summary TEXT,pinnedFacts TEXT,contextNotes TEXT,updatedAt TEXT);
 CREATE TABLE IF NOT EXISTS messageAttachments (messageId TEXT,mediaId TEXT,kind TEXT,PRIMARY KEY(messageId,mediaId));
 CREATE TABLE IF NOT EXISTS jobEvents (id TEXT PRIMARY KEY,jobId TEXT,channel TEXT,state TEXT,message TEXT,createdAt TEXT);`);
+db.exec(`CREATE TABLE IF NOT EXISTS providerSettings (provider TEXT PRIMARY KEY,enabled INTEGER DEFAULT 0,freeze INTEGER DEFAULT 0,dailyCap REAL,monthlyCap REAL,perGenerationCap REAL,updatedAt TEXT);
+CREATE TABLE IF NOT EXISTS liveAuthorizations (id TEXT PRIMARY KEY,provider TEXT,deployment TEXT,requestHash TEXT,maxCost REAL,expiresAt TEXT,consumedAt TEXT);
+CREATE TABLE IF NOT EXISTS providerAssets (mediaId TEXT,provider TEXT,providerAssetId TEXT,temporaryUrl TEXT,uploadedAt TEXT,expiresAt TEXT,cleanupStatus TEXT,PRIMARY KEY(mediaId,provider));
+CREATE TABLE IF NOT EXISTS activationAudit (id TEXT PRIMARY KEY,event TEXT,detailJson TEXT,createdAt TEXT);`);
 export { db };
