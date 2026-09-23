@@ -10,3 +10,4 @@ export class LocalMediaStore implements MediaStore {
   ensureFixture(name: string, title: string, accent: string, label: string) { return this.write(`fixtures/${name}.svg`, title, accent, label); }
   saveUpload(id:string,filename:string,content:Buffer) { const safe=filename.replace(/[^a-zA-Z0-9._-]/g,"-").slice(-80)||"asset"; const relative=`imports/${id}-${safe}`; const file=path.join(publicRoot,relative); fs.mkdirSync(path.dirname(file),{recursive:true}); fs.writeFileSync(file,content); return `/${relative}`; }
 }
+export const localMediaStore = new LocalMediaStore();

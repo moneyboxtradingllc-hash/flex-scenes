@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { db } from "./db";
 import { HotApiClient, type HttpTransport, type LiveRequest, resolve } from "./live-contracts";
 import { audit, governor, requestHash, type LivePlan, vault } from "./live-governor";
+import { localMediaStore } from "./storage";
 
 export const seedreamContract = {
   checkedAt: "2026-09-23T00:00:00.000Z",
@@ -34,3 +35,8 @@ export class HotApiSeedream5ProSpicyProvider {
     catch(error){db.prepare("UPDATE submissionIntents SET state=?,error=?,updatedAt=? WHERE id=?").run("uncertain",error instanceof Error?error.message:"transport",new Date().toISOString(),intent.id);throw error;}
   }
 }
+
+export const normalizeHotApiTask=(task:any)=>({providerTaskId:task?.id as string|undefined,state:({pending:"queued",queued:"queued",processing:"generating",succeeded:"completed",failed:"failed",cancelled:"cancelled",expired:"failed"}[task?.status]??"failed"),error:task?.error?.message,outputUrl:task?.output?.url??task?.output?.images?.[0]?.url,estimatedCost:typeof task?.estimated_credits_cost==="number"?task.estimated_credits_cost/1000:undefined,actualCost:typeof task?.actual_credits_cost==="number"?task.actual_credits_cost/1000:undefined});
+export async function pollHotApiTask(transport:HttpTransport,apiKey:string,taskId:string){const result=await transport.request({url:`https://api.hotapi.ai/v1/tasks/${taskId}`,method:"GET",headers:{Authorization:`Bearer ${apiKey}`}});return normalizeHotApiTask(result.json);}
+/** Downloads only a completed, image-content provider output; caller supplies an injected fetcher for testability. */
+export async function ingestSeedreamOutput(input:{url:string;jobId:string;characterId:string;prompt:string;fetcher:(url:string)=>Promise<{contentType:string;bytes:Buffer}>}){const file=await input.fetcher(input.url);if(!file.contentType.startsWith("image/")||!file.bytes.length)throw new Error("INVALID_PROVIDER_IMAGE_OUTPUT");const ext=file.contentType.includes("png")?"png":"jpg";const url=localMediaStore.saveUpload(`provider-${input.jobId}`,`seedream.${ext}`,file.bytes);return {url,providerId:"HotAPI",jobId:input.jobId,provenance:"provider-ingested" as const};}
