@@ -16,6 +16,7 @@ import { PremiumReels } from "@/components/reels-surface";
 import { PremiumExplore } from "@/components/explore-surface";
 import { PremiumLibrary } from "@/components/library-surface";
 import { PremiumMediaDetail } from "@/components/media-detail";
+import { GenerationProgress } from "@/components/generation-surfaces";
 
 type View =
   | "home"
@@ -27,6 +28,8 @@ type View =
   | "character"
   | "settings"
   | "jobs"
+  | "progress"
+  | "result"
   | "collections"
   | "lab";
 const icon: Record<string, string> = {
@@ -73,11 +76,18 @@ export function StudioApp({
     initial.characters[0]?.id,
   );
   const [selected, setSelected] = useState<MediaAsset | null>(null);
+  const [selectedJobId, setSelectedJobId] = useState(route.split("/")[1] ?? "");
+  const [jobConnectionError, setJobConnectionError] = useState(false);
+  const [targetConversationId, setTargetConversationId] = useState("");
   const [createContext, setCreateContext] = useState<{
     parent?: MediaAsset;
     conversationId?: string;
     characterId?: string;
     mode?: "image" | "video";
+    prompt?: string;
+    ratio?: string;
+    duration?: number;
+    referenceAssetIds?: string[];
   }>({});
   const refresh = async () => {
     const next = await json<AppSnapshot>(
@@ -91,6 +101,36 @@ export function StudioApp({
     if (context) setCreateContext(context);
     window.history.pushState({}, "", next === "home" ? "/" : `/${next}`);
   };
+  const openJob = (job: GenerationJob) => {
+    setSelectedJobId(job.id);
+    const destination = job.status === "completed" ? "result" : "progress";
+    setView(destination);
+    window.history.pushState({}, "", `/${destination}/${job.id}`);
+  };
+  const activeJobKey = data.jobs.filter((job) => !["completed", "failed", "cancelled"].includes(job.status)).map((job) => job.id).join(",");
+  useEffect(() => {
+    const activeJobIds = activeJobKey ? activeJobKey.split(",") : [];
+    if (!activeJobIds.length) return;
+    let alive = true;
+    const poll = async () => {
+      try {
+        const responses = await Promise.all(activeJobIds.map((id) => fetch(`/api/jobs/${id}`, { cache: "no-store" })));
+        if (responses.some((response) => !response.ok)) throw new Error("Job polling failed");
+        const updatedJobs = await Promise.all(responses.map((response) => response.json() as Promise<GenerationJob>));
+        if (!alive) return;
+        setJobConnectionError(false);
+        const selectedUpdate = updatedJobs.find((job) => job.id === selectedJobId);
+        if (view === "progress" && selectedUpdate?.status === "completed" && selectedUpdate.mediaId) {
+          setView("result");
+          window.history.replaceState({}, "", `/result/${selectedUpdate.id}`);
+        }
+        await refresh();
+      } catch { if (alive) setJobConnectionError(true); }
+    };
+    const timer = window.setInterval(() => void poll(), 1100);
+    return () => { alive = false; window.clearInterval(timer); };
+  }, [activeJobKey, selectedJobId, view]);
+  const openConversation = (id: string) => { setTargetConversationId(id); go("messages"); };
   const active =
     data.characters.find((c) => c.id === activeCharacter) ?? data.characters[0];
   const isWideArchive = view === "explore" || view === "library";
@@ -216,12 +256,10 @@ export function StudioApp({
             <CapabilityCreate
               data={data}
               context={createContext}
-              onComplete={async () => {
-                await refresh();
-                go("library");
-              }}
+              onJobCreated={openJob}
             />
           )}{" "}
+          {(view === "progress" || view === "result") && <GenerationProgress data={data} job={data.jobs.find((item) => item.id === selectedJobId)} connectionError={jobConnectionError} refresh={refresh} openJob={openJob} browse={() => go("explore")} jobs={() => go("jobs")} edit={(job) => { const parent = job.parentMediaId ? data.media.find((item) => item.id === job.parentMediaId) : undefined; let settings: Record<string, unknown> = {}; try { settings = JSON.parse(job.settingsJson); } catch {} go("create", { parent, conversationId: job.conversationId ?? undefined, characterId: job.characterId, mode: job.mode, prompt: job.prompt, ratio: typeof settings.aspectRatio === "string" ? settings.aspectRatio : undefined, duration: typeof settings.duration === "number" ? settings.duration : undefined, referenceAssetIds: Array.isArray(settings.referenceAssetIds) ? settings.referenceAssetIds : undefined }); }} conversation={openConversation} createResult={(media, mode) => createFrom(media, data.jobs.find((item) => item.id === selectedJobId)?.conversationId ?? undefined, media.characterId, mode)} select={setSelected} />}{" "}
           {view === "reels" && (
             <PremiumReels
               data={data}
@@ -236,6 +274,7 @@ export function StudioApp({
               data={data}
               create={createFrom}
               refresh={refresh}
+              initialConversationId={targetConversationId}
             />
           )}{" "}
           {view === "library" && <PremiumLibrary data={data} select={setSelected} refresh={refresh} create={createFrom} />}{" "}
@@ -257,7 +296,7 @@ export function StudioApp({
             />
           )}{" "}
           {view === "jobs" && (
-            <JobCenter data={data} select={setSelected} refresh={refresh} />
+            <JobCenter data={data} select={setSelected} refresh={refresh} openJob={openJob} />
           )}{" "}
           {view === "collections" && (
             <Collections data={data} refresh={refresh} select={setSelected} />
@@ -817,6 +856,10 @@ function LegacyCapabilityCreate({
     conversationId?: string;
     characterId?: string;
     mode?: "image" | "video";
+    prompt?: string;
+    ratio?: string;
+    duration?: number;
+    referenceAssetIds?: string[];
   };
   onComplete: () => void;
 }) {
@@ -1184,7 +1227,7 @@ function LegacyCapabilityCreate({
 function CapabilityCreate({
   data,
   context,
-  onComplete,
+  onJobCreated,
 }: {
   data: AppSnapshot;
   context: {
@@ -1193,13 +1236,13 @@ function CapabilityCreate({
     characterId?: string;
     mode?: "image" | "video";
   };
-  onComplete: () => void;
+  onJobCreated: (job: GenerationJob) => void;
 }) {
   return (
     <PremiumCreateStudio
       data={data}
       context={context}
-      onComplete={onComplete}
+      onJobCreated={onJobCreated}
     />
   );
 }
@@ -1865,10 +1908,12 @@ function JobCenter({
   data,
   select,
   refresh,
+  openJob,
 }: {
   data: AppSnapshot;
   select: (m: MediaAsset) => void;
   refresh: () => Promise<void>;
+  openJob: (job: GenerationJob) => void;
 }) {
   const [filter, setFilter] = useState("all");
   const jobs = data.jobs.filter((j) => filter === "all" || j.status === filter);
@@ -1907,14 +1952,13 @@ function JobCenter({
               className="rounded-2xl border border-white/8 bg-[#13141b] p-4"
             >
               <div className="flex justify-between gap-3">
-                <div>
+                <button onClick={() => openJob(job)} className="text-left">
                   <b className="capitalize">
                     {job.mode} · {job.status}
                   </b>
-                  <p className="text-sm text-zinc-500">
-                    {job.providerId} · {job.prompt.slice(0, 80)}
-                  </p>
-                </div>
+                  <p className="text-sm text-zinc-500">{job.prompt.slice(0, 80)}</p>
+                  <span className="mt-1 inline-block text-xs text-fuchsia-200">{job.status === "completed" ? "Open result" : job.status === "failed" ? "Review failure" : "View progress"} →</span>
+                </button>
                 <span className="text-xs text-fuchsia-200">$0.00</span>
               </div>
               <p className="mt-2 text-xs text-zinc-500">
@@ -1923,10 +1967,10 @@ function JobCenter({
               <div className="mt-3 flex gap-2">
                 {output && (
                   <button
-                    onClick={() => select(output)}
+                    onClick={() => openJob(job)}
                     className="rounded-full bg-white/10 px-3 py-1 text-xs"
                   >
-                    Open result
+                    View result
                   </button>
                 )}
                 <button

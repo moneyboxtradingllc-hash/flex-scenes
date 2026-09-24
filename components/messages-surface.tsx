@@ -83,12 +83,14 @@ export function PremiumMessages({
   data,
   create,
   refresh,
+  initialConversationId,
 }: {
   data: AppSnapshot;
   create: CreateScene;
   refresh: () => Promise<void>;
+  initialConversationId?: string;
 }) {
-  const [activeId, setActiveId] = useState(data.conversations[0]?.id);
+  const [activeId, setActiveId] = useState(initialConversationId || data.conversations[0]?.id);
   const [mobileThread, setMobileThread] = useState(false);
   const [text, setText] = useState("");
   const [attachmentId, setAttachmentId] = useState("");

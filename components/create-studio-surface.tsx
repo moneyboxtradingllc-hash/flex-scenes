@@ -4,8 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { AppSnapshot, GenerationInput, GenerationJob, MediaAsset } from "@/lib/domain";
 
 const asJson = <T,>(response: Response) => response.json() as Promise<T>;
-const terminal = new Set(["completed", "failed", "cancelled"]);
-type CreateContext = { parent?: MediaAsset; conversationId?: string; characterId?: string; mode?: "image" | "video" };
+type CreateContext = { parent?: MediaAsset; conversationId?: string; characterId?: string; mode?: "image" | "video"; prompt?: string; ratio?: string; duration?: number; referenceAssetIds?: string[] };
 
 function ratioShape(ratio: string) {
   if (ratio === "9:16") return "h-7 w-4";
@@ -14,21 +13,15 @@ function ratioShape(ratio: string) {
   if (ratio === "4:3") return "h-5 w-7";
   return "h-5 w-5";
 }
-function stageFor(status: GenerationJob["status"]) {
-  const stages = ["Preparing", "Queued", "Generating", "Finalizing", "Saving"];
-  return { stages, active: status === "queued" ? 1 : status === "generating" ? 2 : status === "finalizing" ? 3 : status === "completed" ? 4 : 0 };
-}
-
-export function PremiumCreateStudio({ data, context, onComplete }: { data: AppSnapshot; context: CreateContext; onComplete: () => void }) {
+export function PremiumCreateStudio({ data, context, onJobCreated }: { data: AppSnapshot; context: CreateContext; onJobCreated: (job: GenerationJob) => void }) {
   const [mode, setMode] = useState<"image" | "video">(context.mode ?? "image");
   const [characterId, setCharacterId] = useState(context.characterId ?? data.characters[0]?.id);
-  const [prompt, setPrompt] = useState(context.parent ? `Remix: ${context.parent.prompt}` : "");
-  const [ratio, setRatio] = useState("4:5");
-  const [duration, setDuration] = useState(5);
-  const [refs, setRefs] = useState<string[]>(context.parent ? [context.parent.id] : []);
+  const [prompt, setPrompt] = useState(context.prompt ?? (context.parent ? `Remix: ${context.parent.prompt}` : ""));
+  const [ratio, setRatio] = useState(context.ratio ?? "4:5");
+  const [duration, setDuration] = useState(context.duration ?? 5);
+  const [refs, setRefs] = useState<string[]>(context.referenceAssetIds ?? (context.parent ? [context.parent.id] : []));
   const [useDefaults, setUseDefaults] = useState(true);
   const [advanced, setAdvanced] = useState(false);
-  const [job, setJob] = useState<GenerationJob | null>(null);
   const [uploading, setUploading] = useState(false);
   const [localAssets, setLocalAssets] = useState<MediaAsset[]>([]);
   const capabilities = data.capabilities.find((item) => item.mode === mode);
@@ -47,16 +40,6 @@ export function PremiumCreateStudio({ data, context, onComplete }: { data: AppSn
     const timer = setTimeout(() => fetch("/api/actions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "draft-save", draft: { id: "current", characterId, mode, payloadJson: JSON.stringify({ prompt, ratio, duration, referenceAssetIds: refs, useDefaults }), updatedAt: new Date().toISOString() } }) }).catch(() => undefined), 350);
     return () => clearTimeout(timer);
   }, [characterId, mode, prompt, ratio, duration, refs, useDefaults]);
-  useEffect(() => {
-    if (!job || terminal.has(job.status)) return;
-    const timer = setInterval(async () => {
-      const next = await asJson<GenerationJob>(await fetch(`/api/jobs/${job.id}`, { cache: "no-store" }));
-      setJob(next);
-      if (next.status === "completed") setTimeout(onComplete, 450);
-    }, 500);
-    return () => clearInterval(timer);
-  }, [job, onComplete]);
-
   const toggle = (id: string) => setRefs((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
   const chooseCharacter = (id: string) => { setCharacterId(id); if (!context.parent) setRefs([]); };
   const moveReference = (index: number, direction: -1 | 1) => {
@@ -77,9 +60,10 @@ export function PremiumCreateStudio({ data, context, onComplete }: { data: AppSn
   const generate = async () => {
     if (!capabilities || !prompt.trim()) return;
     const input: GenerationInput = { characterId, mode, prompt, aspectRatio: ratio, preset: mode === "image" ? "Hero" : `${duration} seconds`, count: mode === "image" ? 1 : undefined, duration: mode === "video" ? duration : undefined, simulation: "success", referenceAssetIds: effectiveRefs, parentMediaId: context.parent?.id ?? null, conversationId: context.conversationId ?? null };
-    setJob(await asJson<GenerationJob>(await fetch("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) })));
+    const response = await fetch("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) });
+    const job = await asJson<GenerationJob>(response);
+    if (response.ok && job?.id) onJobCreated(job);
   };
-  const jobStages = job ? stageFor(job.status) : null;
 
   return <div className="mx-auto max-w-[920px] pb-10">
     <header className="mb-6 flex items-end justify-between gap-4"><div><p className="text-[11px] font-bold uppercase tracking-[.2em] text-fuchsia-300">Create</p><h1 className="mt-1 text-3xl font-bold tracking-tight">Direct a new scene</h1><p className="mt-1 text-sm text-zinc-500">Your draft is saved quietly as you work.</p></div><span className="hidden rounded-full bg-white/[.05] px-3 py-1 text-xs text-zinc-400 sm:block">Mock studio · $0.00</span></header>
@@ -92,7 +76,7 @@ export function PremiumCreateStudio({ data, context, onComplete }: { data: AppSn
       <div className="mt-5"><p className="mb-2 text-sm font-semibold">Frame</p><div className="flex gap-2 overflow-x-auto">{capabilities?.aspectRatios.map((item) => <button key={item} onClick={() => setRatio(item)} className={`grid min-w-16 place-items-center rounded-xl border px-3 py-2 text-xs transition ${ratio === item ? "border-fuchsia-400 bg-fuchsia-500/10 text-white" : "border-white/10 text-zinc-400"}`}><span className={`mb-1 border border-current ${ratioShape(item)}`} />{item}</button>)}</div></div>
       {mode === "video" && <div className="mt-5 rounded-2xl bg-white/[.04] p-3"><div className="flex items-center justify-between"><b className="text-sm">Motion</b><span className="text-xs text-zinc-500">Source image, motion, and video references are supported in this studio.</span></div><label className="mt-3 flex items-center gap-3 text-sm">Duration<select value={duration} onChange={(event) => setDuration(Number(event.target.value))} className="rounded-lg bg-black/30 px-2 py-1.5 text-sm">{capabilities?.durations.map((item) => <option key={item} value={item}>{item} seconds</option>)}</select></label></div>}
       <button onClick={() => setAdvanced((value) => !value)} className="mt-5 text-sm font-medium text-zinc-400 hover:text-white">Advanced {advanced ? "−" : "+"}</button>{advanced && <div className="mt-3 rounded-2xl border border-white/[.06] bg-black/25 p-4 text-sm text-zinc-300"><div className="flex justify-between gap-4"><span>Provider route</span><b className="text-right text-xs text-zinc-400">{capabilities?.label ?? "Not connected"}</b></div><div className="mt-3 flex justify-between gap-4"><span>{mode === "image" ? "Resolution" : "Video settings"}</span><b className="text-right text-xs text-zinc-400">Capability-driven · mock provider</b></div><p className="mt-3 text-xs text-zinc-500">Provider details, live preview, and cost controls remain available without cluttering the scene composer.</p></div>}
-      {job ? <div className="mt-5 rounded-2xl bg-black/25 p-4"><div className="flex items-center justify-between"><b className="capitalize">{job.status}</b><span className="text-xs text-zinc-500">You can keep working while this runs.</span></div><div className="mt-4 grid grid-cols-5 gap-1">{jobStages?.stages.map((stage, index) => <div key={stage}><div className={`h-1 rounded-full ${index <= (jobStages?.active ?? 0) ? "bg-fuchsia-400" : "bg-white/10"}`} /><span className="mt-2 block text-[9px] leading-tight text-zinc-500">{stage}</span></div>)}</div></div> : <button onClick={generate} disabled={!prompt.trim()} className="mt-6 w-full rounded-2xl bg-gradient-to-r from-fuchsia-500 to-pink-500 py-4 font-bold text-white shadow-xl shadow-fuchsia-950/40 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40">Generate {mode === "image" ? "Image" : "Video"}<span className="ml-2 text-xs font-medium text-fuchsia-100">Estimated cost: $0.00 · Mock</span></button>}
+      <button onClick={generate} disabled={!prompt.trim()} className="mt-6 w-full rounded-2xl bg-gradient-to-r from-fuchsia-500 to-pink-500 py-4 font-bold text-white shadow-xl shadow-fuchsia-950/40 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40">Generate {mode === "image" ? "Image" : "Video"}<span className="ml-2 text-xs font-medium text-fuchsia-100">Estimated cost: $0.00 · Mock</span></button>
     </section>
   </div>;
 }
