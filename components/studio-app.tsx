@@ -15,6 +15,7 @@ import { PremiumMessages } from "@/components/messages-surface";
 import { PremiumReels } from "@/components/reels-surface";
 import { PremiumExplore } from "@/components/explore-surface";
 import { PremiumLibrary } from "@/components/library-surface";
+import { PremiumMediaDetail } from "@/components/media-detail";
 
 type View =
   | "home"
@@ -78,12 +79,13 @@ export function StudioApp({
     characterId?: string;
     mode?: "image" | "video";
   }>({});
-  const refresh = async () =>
-    setData(
-      await json<AppSnapshot>(
-        await fetch("/api/bootstrap", { cache: "no-store" }),
-      ),
+  const refresh = async () => {
+    const next = await json<AppSnapshot>(
+      await fetch("/api/bootstrap", { cache: "no-store" }),
     );
+    setData(next);
+    setSelected((current) => current ? next.media.find((asset) => asset.id === current.id) ?? current : null);
+  };
   const go = (next: View, context?: typeof createContext) => {
     setView(next);
     if (context) setCreateContext(context);
@@ -285,21 +287,26 @@ export function StudioApp({
         ))}
       </nav>
       {selected && (
-        <Detail
+        <PremiumMediaDetail
+          key={selected.id}
           data={data}
           asset={selected}
           character={data.characters.find((c) => c.id === selected.characterId)}
           close={() => setSelected(null)}
           favorite={favorite}
-          reference={reference}
-          remix={() => {
+          onUseReference={async (asset) => {
+            await reference(asset.id);
             setSelected(null);
-            createFrom(selected);
+            createFrom(asset, undefined, asset.characterId, asset.type === "video" ? "video" : "image");
           }}
-          animate={() => {
+          remix={(asset) => {
             setSelected(null);
-            createFrom(selected, undefined, undefined, "video");
+            createFrom(asset, undefined, asset.characterId, asset.type === "video" ? "video" : "image");
           }}
+          animate={(asset) => { setSelected(null); createFrom(asset, undefined, asset.characterId, "video"); }}
+          select={setSelected}
+          refresh={refresh}
+          openCharacter={(id) => { setSelected(null); setActiveCharacter(id); go("character"); }}
         />
       )}
     </main>
