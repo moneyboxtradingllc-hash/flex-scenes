@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 const dataDir = path.join(process.cwd(), "data");
 fs.mkdirSync(dataDir, { recursive: true });
 const db = new DatabaseSync(path.join(dataDir, "flex-scenes.db"));
+db.exec("PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;");
 db.exec(`PRAGMA journal_mode=WAL;
 CREATE TABLE IF NOT EXISTS characters (id TEXT PRIMARY KEY,name TEXT,handle TEXT,portraitUrl TEXT,description TEXT,personality TEXT,identityNotes TEXT,defaultsJson TEXT,createdAt TEXT);
 CREATE TABLE IF NOT EXISTS media (id TEXT PRIMARY KEY,characterId TEXT,type TEXT,url TEXT,posterUrl TEXT,title TEXT,caption TEXT,prompt TEXT,providerId TEXT,settingsJson TEXT,parentId TEXT,isReference INTEGER,createdAt TEXT,favorite INTEGER DEFAULT 0);
@@ -28,4 +29,22 @@ CREATE TABLE IF NOT EXISTS providerAssets (mediaId TEXT,provider TEXT,providerAs
 CREATE TABLE IF NOT EXISTS activationAudit (id TEXT PRIMARY KEY,event TEXT,detailJson TEXT,createdAt TEXT);`);
 db.exec(`CREATE TABLE IF NOT EXISTS runtimeSettings (key TEXT PRIMARY KEY,value TEXT,updatedAt TEXT);
 CREATE TABLE IF NOT EXISTS submissionIntents (id TEXT PRIMARY KEY,jobId TEXT,authorizationId TEXT,provider TEXT,deployment TEXT,requestHash TEXT,idempotencyKey TEXT,state TEXT,providerTaskId TEXT,error TEXT,createdAt TEXT,updatedAt TEXT);`);
+db.exec("CREATE TABLE IF NOT EXISTS schemaMigrations (version INTEGER PRIMARY KEY,name TEXT NOT NULL,appliedAt TEXT NOT NULL);");
+for (const migration of [
+  {version:1,name:"character-director-m1",file:"001_character_director.sql"},
+  {version:2,name:"separate-creative-and-conversation-profiles",file:"002_separate_creative_and_conversation_profiles.sql"},
+  {version:3,name:"character-brain-foreign-keys",file:"003_character_brain_foreign_keys.sql"},
+]) {
+  if (db.prepare("SELECT version FROM schemaMigrations WHERE version=?").get(migration.version)) continue;
+  const sql = fs.readFileSync(path.join(process.cwd(), "lib", "migrations", migration.file), "utf8");
+  db.exec("BEGIN IMMEDIATE;");
+  try {
+    db.exec(sql);
+    db.prepare("INSERT INTO schemaMigrations(version,name,appliedAt) VALUES(?,?,?)").run(migration.version,migration.name,new Date().toISOString());
+    db.exec("COMMIT;");
+  } catch (error) {
+    db.exec("ROLLBACK;");
+    throw error;
+  }
+}
 export { db };
