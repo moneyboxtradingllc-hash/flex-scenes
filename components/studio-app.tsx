@@ -13,6 +13,7 @@ import { PremiumCharacterHub } from "@/components/character-hub-surface";
 import { PremiumCreateStudio } from "@/components/create-studio-surface";
 import { PremiumMessages } from "@/components/messages-surface";
 import { PremiumReels } from "@/components/reels-surface";
+import { PremiumExplore } from "@/components/explore-surface";
 
 type View =
   | "home"
@@ -89,6 +90,7 @@ export function StudioApp({
   };
   const active =
     data.characters.find((c) => c.id === activeCharacter) ?? data.characters[0];
+  const isExplore = view === "explore";
   const favorite = async (id: string) => {
     await fetch("/api/actions", {
       method: "POST",
@@ -144,7 +146,7 @@ export function StudioApp({
     </header>
   );
   return (
-    <main className="mx-auto min-h-screen max-w-[1680px] bg-[#08090d] pb-20 text-zinc-100 md:grid md:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[220px_minmax(0,1fr)_300px] md:pb-0">
+    <main className={`mx-auto min-h-screen max-w-[1680px] bg-[#08090d] pb-20 text-zinc-100 md:grid md:grid-cols-[220px_minmax(0,1fr)] ${isExplore ? "xl:grid-cols-[220px_minmax(0,1fr)]" : "xl:grid-cols-[220px_minmax(0,1fr)_300px]"} md:pb-0`}>
       <aside className="hidden border-r border-white/8 bg-[#0c0d12] p-5 md:block">
         <button
           onClick={() => go("home")}
@@ -194,7 +196,7 @@ export function StudioApp({
       </aside>
       <section className="min-w-0 border-x border-white/5">
         {header}
-        <div className="mx-auto w-full max-w-[900px] p-4 md:p-7">
+        <div className={`mx-auto w-full ${isExplore ? "max-w-none" : "max-w-[900px]"} p-4 md:p-7`}>
           {view === "home" && (
             <Home
               data={data}
@@ -206,7 +208,7 @@ export function StudioApp({
               setCharacter={setActiveCharacter}
             />
           )}{" "}
-          {view === "explore" && <Explore data={data} select={setSelected} />}{" "}
+          {view === "explore" && <PremiumExplore data={data} select={setSelected} openCharacter={(id) => { setActiveCharacter(id); go("character"); }} create={createFrom} />}{" "}
           {view === "create" && (
             <CapabilityCreate
               data={data}
@@ -260,7 +262,7 @@ export function StudioApp({
           {view === "lab" && <ProviderLab data={data} go={go} />}
         </div>
       </section>
-      <ContextRail data={data} character={active} view={view} go={go} />
+      {!isExplore && <ContextRail data={data} character={active} view={view} go={go} />}
       <nav className="fixed bottom-0 left-0 right-0 z-30 flex justify-around border-t border-white/10 bg-[#111218]/95 px-2 py-2 backdrop-blur md:hidden">
         {nav.map(([id, label]) => (
           <button
