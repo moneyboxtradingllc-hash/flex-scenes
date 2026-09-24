@@ -47,7 +47,7 @@ export function PremiumHome({
   const media = [...data.media].sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)).slice(0, 8);
 
   return (
-    <div className="home-surface">
+    <div className="home-surface" data-ui-v2="home">
       <h1 className="sr-only">Flex Scenes home</h1>
       <section className="home-stories" aria-label="Your characters">
         <button className="home-story" onClick={() => create()} aria-label="Create a new scene">
@@ -110,14 +110,7 @@ export function PremiumHome({
 
                 <div className="home-post-caption">
                   <p><strong>{character?.name ?? "Scene"}</strong>{caption && <span>{caption}</span>}</p>
-                  <span className="home-post-kind">{asset.type === "video" ? "Video · private preview" : "Image · private creation"}</span>
-                  <div className="home-creative-actions">
-                    {asset.type === "image" ? (
-                      <><button onClick={() => create(asset, "video")}>Animate</button><button onClick={() => create(asset, "image")}>Remix image</button></>
-                    ) : (
-                      <button onClick={() => create(asset, "video")}>Remix video</button>
-                    )}
-                  </div>
+                  <span className="sr-only">{asset.type === "video" ? "Video preview" : "Image creation"}</span>
                 </div>
               </article>
             );

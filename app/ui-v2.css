@@ -81,8 +81,6 @@ main nav.app-bottom-nav button.bottom-nav-create { min-width: 58px; min-height: 
 .home-post-caption p { margin: 0; color: #c9c6cd; font-size: 11px; line-height: 1.5; }
 .home-post-caption p strong { margin-right: 5px; color: #fbfafb; font-weight: 690; }
 .home-post-kind { display: block; margin-top: 3px; color: #77757d; font-size: 9px; }
-.home-creative-actions { display: flex; gap: 14px; padding-top: 8px; }
-.home-creative-actions button { padding: 0; border: 0; background: transparent; color: var(--ui2-pink-soft); font-size: 10px; font-weight: 650; }
 .home-empty { display: grid; min-height: 330px; align-content: center; justify-items: center; padding: 22px; text-align: center; }
 .home-empty-mark { display: grid; width: 46px; height: 46px; place-items: center; border: 1px solid var(--ui2-border); border-radius: 15px; color: var(--ui2-pink-soft); }
 .home-empty-mark svg { width: 22px; height: 22px; }
@@ -110,10 +108,24 @@ main nav.app-bottom-nav button.bottom-nav-create { min-width: 58px; min-height: 
   .home-page-content { padding-right: 34px !important; padding-left: 34px !important; }
 }
 @media (max-width: 767px) {
+  .app-header { min-height: 55px; }
   .home-page-content { padding: 0 var(--ui2-mobile-gutter) 34px !important; }
   .home-stories { margin-right: calc(-1 * var(--ui2-mobile-gutter)); margin-left: calc(-1 * var(--ui2-mobile-gutter)); }
-  .home-feed { gap: 18px; }
+  .home-feed { gap: 12px; }
+  .home-post { margin-right: calc(-1 * var(--ui2-mobile-gutter)); margin-left: calc(-1 * var(--ui2-mobile-gutter)); }
+  .home-post-header { min-height: 48px; padding-right: var(--ui2-mobile-gutter); padding-left: var(--ui2-mobile-gutter); }
+  .home-post-media { width: 100%; border-radius: 0; }
+  .home-post-media img { width: 100%; max-height: 74dvh; object-fit: cover; }
+  .home-post-actions { padding-right: var(--ui2-mobile-gutter); padding-left: var(--ui2-mobile-gutter); }
+  .home-post-caption { padding: 0 var(--ui2-mobile-gutter) 12px; }
+  .home-post-kind, .home-creative-actions { display: none; }
   .app-header { padding-right: 16px !important; padding-left: 16px !important; }
+  .home-story { min-width: 65px; font-size: 10px; }
+  .home-story-ring { width: 60px; height: 60px; }
+  .home-stories { gap: 11px; padding-top: 6px; padding-bottom: 7px; }
+  .home-post-header { min-height: 45px; }
+  main nav.app-bottom-nav button.bottom-nav-create { min-width: 54px; min-height: 54px; }
+  .bottom-nav-create .bottom-nav-icon { width: 46px; height: 46px; }
   .app-header .brand-lockup { font-size: 17px !important; letter-spacing: -.075em !important; }
   .home-post-header button:first-child { font-size: inherit !important; font-style: normal !important; letter-spacing: normal !important; text-transform: none !important; }
   main nav.app-bottom-nav button.bottom-nav-item { min-width: 52px; }
