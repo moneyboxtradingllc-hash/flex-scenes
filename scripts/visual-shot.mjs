@@ -8,7 +8,7 @@ import { chromium } from "playwright";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const target = process.argv[2] ?? "/";
 const widths = process.argv.includes("--all")
-  ? [360, 393, 430, 768, 1024, 1440]
+  ? [360, 393, 430, 768, 1024, 1440, 1680]
   : [Number(process.argv[3] ?? 393)];
 const outputDir = path.join(root, ".artifacts", "visual");
 const portArg = process.argv.find((arg) => arg.startsWith("--port="));
@@ -63,7 +63,7 @@ try {
   await mkdir(outputDir, { recursive: true });
   if (target === "/" && !process.argv.includes("--live")) {
     for (const file of await readdir(outputDir)) {
-      if (/^home-(360|393|430|768|1024|1440|live-393)\.png$/.test(file)) await rm(path.join(outputDir, file));
+      if (/^home-(360|393|430|768|1024|1440|1680|live-393)\.png$/.test(file)) await rm(path.join(outputDir, file));
     }
   }
   browser = await chromium.launch({ headless: true });
@@ -89,6 +89,7 @@ try {
       if (await page.locator(".home-creative-actions").count()) throw new Error("Dashboard-style creative text actions remain visible in Home feed");
       if (width < 768 && await page.getByRole("navigation", { name: "Main navigation" }).locator("button").count() !== 5) throw new Error("Mobile navigation must contain five actions");
       if (width >= 768 && !(await page.locator(".app-desktop-nav").isVisible())) throw new Error("Desktop navigation did not render");
+      if (width >= 1280 && (await page.locator(".home-character-card").count() !== 1 || await page.locator(".home-recent-messages").count() !== 1)) throw new Error("Desktop Home character and message context rail did not render");
     }
     const metrics = await page.evaluate(() => {
       const rect = (selector) => {
@@ -112,6 +113,18 @@ try {
       await page.waitForTimeout(250);
       if (new URL(page.url()).pathname !== "/create") throw new Error(`Home media action did not open Create Studio (${page.url()})`);
       console.log("Home media to Create Studio handoff passed");
+    }
+    if (process.argv.includes("--smoke") && target === "/" && width >= 1280) {
+      const messageAction = page.locator(".home-character-message");
+      const characterName = await messageAction.innerText();
+      await messageAction.click();
+      await page.waitForTimeout(150);
+      if (new URL(page.url()).pathname !== "/messages") throw new Error("Desktop character card did not open Messages");
+      await page.goto(new URL("/", baseUrl).toString(), { waitUntil: "domcontentloaded" });
+      await page.locator(".home-character-identity").click();
+      await page.waitForTimeout(150);
+      if (new URL(page.url()).pathname !== "/character") throw new Error("Desktop character card did not open Character Hub");
+      console.log(`Desktop Home context actions passed (${characterName.trim()})`);
     }
     await page.close();
   }

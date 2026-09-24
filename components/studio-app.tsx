@@ -179,6 +179,7 @@ export function StudioApp({
     <header className={`app-header sticky top-0 z-20 flex items-center justify-between border-b border-white/8 bg-[#08090d]/90 px-5 py-4 backdrop-blur ${view === "home" ? "app-header-home" : ""}`}>
       <button onClick={() => go("home")} className="brand-lockup" aria-label="Flex Scenes home"><span>FLEX</span><span>SCENES</span></button>
       <div className="app-header-actions">
+        {view === "home" && <button aria-label="Search characters and scenes" onClick={() => go("explore")} className="app-header-icon"><UiIcon name="explore" /></button>}
         <button aria-label="Open Messages" onClick={() => go("messages")} className="app-header-icon"><UiIcon name="messages" /></button>
         {view !== "home" && <button aria-label="Open Library" onClick={() => go("library")} className="app-header-icon"><UiIcon name="library" /></button>}
       </div>
@@ -207,6 +208,12 @@ export function StudioApp({
           label="Messages"
           active={view === "messages"}
           onClick={() => go("messages")}
+        />
+        <NavButton
+          id="profile"
+          label="Character Hub"
+          active={view === "character"}
+          onClick={() => go("character")}
         />
         <NavButton
           id="jobs"
@@ -294,7 +301,7 @@ export function StudioApp({
           {view === "lab" && <ProviderLab data={data} go={go} />}
         </div>
       </section>
-      {!isWideArchive && <ContextRail data={data} character={active} view={view} go={go} />}
+      {!isWideArchive && <ContextRail data={data} character={active} view={view} go={go} openConversation={openConversation} />}
       <nav aria-label="Main navigation" className="app-bottom-nav fixed bottom-0 left-0 right-0 z-30 flex justify-around border-t border-white/10 bg-[#111218]/95 px-2 py-2 backdrop-blur md:hidden">
         {nav.map(([id, label]) => (
           <button
@@ -340,38 +347,59 @@ function ContextRail({
   character,
   view,
   go,
+  openConversation,
 }: {
   data: AppSnapshot;
   character?: AppSnapshot["characters"][number];
   view: View;
   go: (x: View) => void;
+  openConversation: (id: string) => void;
 }) {
-  const latest = data.media.slice(0, 4),
+  const latest = (view === "home" && data.media.some((media) => media.type === "video")
+    ? data.media.filter((media) => media.type === "video")
+    : data.media).slice(0, view === "home" ? 3 : 4),
     jobs = data.jobs.filter(
       (j) => !["completed", "failed", "cancelled"].includes(j.status),
     );
+  const characterMedia = data.media.filter((media) => media.characterId === character?.id);
+  const characterVideos = characterMedia.filter((media) => media.type === "video").length;
+  const characterImages = characterMedia.filter((media) => media.type === "image").length;
+  const recentConversations = data.conversations
+    .filter((conversation) => data.characters.some((item) => item.id === conversation.characterId))
+    .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
+    .slice(0, 3);
   return (
-    <aside className="hidden border-l border-white/5 bg-[#0a0c10]/70 p-5 xl:block">
+    <aside className={`home-context-rail hidden border-l border-white/5 bg-[#0a0c10]/70 p-5 xl:block ${view === "home" ? "is-home-context" : ""}`}>
       <div className="sticky top-5 space-y-7">
-        <section>
+        <section className="home-character-section">
           <p className="text-[11px] font-bold uppercase tracking-[.18em] text-zinc-500">
-            Current character
+            {view === "home" ? "Active character" : "Current character"}
           </p>
           {character && (
-            <button
-              onClick={() => go("character")}
-              className="mt-3 flex w-full items-center gap-3 text-left"
-            >
-              <img
-                src={character.portraitUrl}
-                alt=""
-                className="h-12 w-12 rounded-full ring-2 ring-fuchsia-400/70 ring-offset-2 ring-offset-[#0a0c10]"
-              />
-              <span>
-                <b className="block text-sm">{character.name}</b>
-                <small className="text-zinc-500">{character.handle}</small>
-              </span>
-            </button>
+            view === "home" ? (
+              <div className="home-character-card">
+                <button onClick={() => go("character")} className="home-character-identity">
+                  <img src={character.portraitUrl} alt={`${character.name} portrait`} />
+                  <span><b>{character.name}</b><small>{character.handle}</small></span>
+                </button>
+                <p>{character.description}</p>
+                <div className="home-character-stats" aria-label={`${characterImages} images and ${characterVideos} videos`}>
+                  <span><b>{characterMedia.length}</b><small>Scenes</small></span>
+                  <span><b>{characterImages}</b><small>Images</small></span>
+                  <span><b>{characterVideos}</b><small>Videos</small></span>
+                </div>
+                <button className="home-character-message" onClick={() => {
+                  const conversation = data.conversations.find((item) => item.characterId === character.id);
+                  if (conversation) openConversation(conversation.id);
+                  else go("messages");
+                }}><UiIcon name="messages" /> Message {character.name.split(" ")[0]}</button>
+              </div>
+            ) : (
+              <button onClick={() => go("character")} className="mt-3 flex w-full items-center gap-3 text-left">
+                <img src={character.portraitUrl} alt="" className="h-12 w-12 rounded-full ring-2 ring-fuchsia-400/70 ring-offset-2 ring-offset-[#0a0c10]" />
+                <span><b className="block text-sm">{character.name}</b><small className="text-zinc-500">{character.handle}</small></span>
+              </button>
+            )
           )}
         </section>
         <section>
@@ -386,7 +414,7 @@ function ContextRail({
               View all
             </button>
           </div>
-          <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className={`mt-3 grid grid-cols-2 gap-2 ${view === "home" ? "home-recent-scenes" : ""}`}>
             {latest.map((m) => (
               <button
                 key={m.id}
@@ -402,6 +430,28 @@ function ContextRail({
             ))}
           </div>
         </section>
+        {view === "home" && recentConversations.length > 0 && (
+          <section className="home-recent-messages">
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] font-bold uppercase tracking-[.18em] text-zinc-500">Recent messages</p>
+              <button onClick={() => go("messages")} className="text-xs text-fuchsia-300">See all</button>
+            </div>
+            <div className="mt-2">
+              {recentConversations.map((conversation) => {
+                const person = data.characters.find((item) => item.id === conversation.characterId);
+                const lastMessage = data.messages.filter((message) => message.conversationId === conversation.id).sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))[0];
+                if (!person) return null;
+                return (
+                  <button className="home-recent-message" key={conversation.id} onClick={() => openConversation(conversation.id)}>
+                    <img src={person.portraitUrl} alt="" />
+                    <span><b>{person.name}</b><small>{lastMessage?.body ?? "Open conversation"}</small></span>
+                    {conversation.unread && <i aria-label="Unread message" />}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        )}
         {jobs.length > 0 && (
           <section className="rounded-2xl border border-fuchsia-300/15 bg-fuchsia-500/5 p-3">
             <p className="text-xs font-bold">Generation in progress</p>
@@ -449,7 +499,8 @@ function NavButton({
   return (
     <button
       onClick={onClick}
-      className={`mb-2 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm ${active ? "bg-fuchsia-500/15 text-fuchsia-200" : "text-zinc-400 hover:bg-white/5"}`}
+      aria-current={active ? "page" : undefined}
+      className={`desktop-nav-item desktop-nav-${id} mb-2 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm ${active ? "bg-fuchsia-500/15 text-fuchsia-200" : "text-zinc-400 hover:bg-white/5"}`}
     >
       <span className="desktop-nav-icon"><UiIcon name={id as "home" | "explore" | "create" | "reels" | "messages" | "library" | "jobs" | "collections"} /></span>
       <span>{label}</span>
