@@ -7,6 +7,7 @@ import type {
   GenerationInput,
   GenerationJob,
   MediaAsset,
+  CharacterReference,
 } from "@/lib/domain";
 import { PremiumHome } from "@/components/home-surface";
 import { PremiumCharacterHub } from "@/components/character-hub-surface";
@@ -84,10 +85,13 @@ export function StudioApp({
     conversationId?: string;
     characterId?: string;
     mode?: "image" | "video";
+    proposalId?: string;
+    referenceAssetIds?: string[];
+    referenceAssetRoles?: Record<string, CharacterReference["role"]>;
+    sceneContext?: GenerationInput["sceneContext"];
     prompt?: string;
     ratio?: string;
     duration?: number;
-    referenceAssetIds?: string[];
   }>({});
   const refresh = async () => {
     const next = await json<AppSnapshot>(
@@ -155,12 +159,20 @@ export function StudioApp({
     conversationId?: string,
     characterId?: string,
     mode?: "image" | "video",
+    proposal?: AppSnapshot["proposals"][number],
   ) =>
     go("create", {
       parent,
       conversationId,
       characterId: characterId ?? parent?.characterId,
       mode,
+      prompt: proposal ? (mode === "video" ? proposal.proposedVideoPlan : proposal.proposedImagePlan) : undefined,
+      ratio: proposal?.suggestedAspectRatio,
+      duration: proposal?.suggestedDuration ?? undefined,
+      referenceAssetIds: proposal?.suggestedReferenceIds,
+      referenceAssetRoles: proposal?.suggestedReferenceRoles,
+      proposalId: proposal?.id,
+      sceneContext: proposal ? { concept: proposal.concept, location: proposal.location, wardrobe: proposal.wardrobe, mood: proposal.mood, lighting: proposal.lighting, shotDescription: proposal.shotDescription, cameraDirection: proposal.cameraDirection, proposedImagePlan: proposal.proposedImagePlan, proposedVideoPlan: proposal.proposedVideoPlan } : undefined,
     });
   const header = (
     <header className="sticky top-0 z-20 flex items-center justify-between border-b border-white/8 bg-[#08090d]/90 px-5 py-4 backdrop-blur">
@@ -856,10 +868,13 @@ function LegacyCapabilityCreate({
     conversationId?: string;
     characterId?: string;
     mode?: "image" | "video";
+    proposalId?: string;
+    referenceAssetIds?: string[];
+    referenceAssetRoles?: Record<string, CharacterReference["role"]>;
+    sceneContext?: GenerationInput["sceneContext"];
     prompt?: string;
     ratio?: string;
     duration?: number;
-    referenceAssetIds?: string[];
   };
   onComplete: () => void;
 }) {
@@ -1235,6 +1250,13 @@ function CapabilityCreate({
     conversationId?: string;
     characterId?: string;
     mode?: "image" | "video";
+    proposalId?: string;
+    referenceAssetIds?: string[];
+    referenceAssetRoles?: Record<string, CharacterReference["role"]>;
+    sceneContext?: GenerationInput["sceneContext"];
+    prompt?: string;
+    ratio?: string;
+    duration?: number;
   };
   onJobCreated: (job: GenerationJob) => void;
 }) {
@@ -1691,6 +1713,7 @@ function CharacterSettings({
   go: (x: View) => void;
 }) {
   const [form, setForm] = useState(character);
+  const [brain, setBrain] = useState(data.characterProfiles.find((item) => item.characterId === character?.id));
   const [status, setStatus] = useState("");
   if (!character || !form) return null;
   const refs = data.characterReferences.filter(
@@ -1714,6 +1737,7 @@ function CharacterSettings({
         },
       }),
     });
+    if (brain) await fetch("/api/director", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "profile-update", characterId: character.id, ...brain }) });
     await refresh();
     setStatus("Saved");
   };
@@ -1806,6 +1830,20 @@ function CharacterSettings({
           </p>
         </section>
       </div>
+      {brain && (
+        <section className="mt-5 rounded-3xl border border-fuchsia-300/15 bg-[#13141b] p-5">
+          <h2 className="font-bold">Creative profile</h2>
+          <p className="mt-1 text-sm text-zinc-500">Shape what she likes to create; these preferences stay separate from her visual identity.</p>
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <label className="label">Initiative<select value={brain.initiativeLevel} onChange={(e)=>setBrain({...brain,initiativeLevel:e.target.value})}><option value="REACTIVE">Reactive · only when asked</option><option value="CREATIVE">Creative · suggest during relevant chats</option><option value="DIRECTOR">Director · proactive ideas when prompted to think</option></select></label>
+            <label className="label">Creative boldness<input type="range" min="0" max="1" step="0.05" value={brain.creativeProfile.creativeBoldness} onChange={(e)=>setBrain({...brain,creativeProfile:{...brain.creativeProfile,creativeBoldness:Number(e.target.value)}})} /></label>
+            {([["favoriteEnvironments","Favorite locations"],["preferredMoods","Preferred moods"],["visualThemes","Visual styles"],["wardrobeCategories","Wardrobe categories"],["cameraEnergy","Camera energy"],["ideasToTry","Ideas she wants to try"],["ideasTiredOf","Scenes she is tired of"]] as const).map(([key,label])=><label key={key} className="label">{label}<input value={brain.creativeProfile[key].join(", ")} onChange={(e)=>setBrain({...brain,creativeProfile:{...brain.creativeProfile,[key]:e.target.value.split(",").map((x)=>x.trim()).filter(Boolean)}})} /></label>)}
+            <label className="label">Repetition tolerance<input type="range" min="0" max="1" step="0.05" value={brain.creativeProfile.repetitionTolerance} onChange={(e)=>setBrain({...brain,creativeProfile:{...brain.creativeProfile,repetitionTolerance:Number(e.target.value)}})} /></label>
+          </div>
+          <div className="mt-5 flex flex-wrap gap-5 text-sm"><label className="flex items-center gap-2"><input type="checkbox" checked={brain.adultCharacter} onChange={(e)=>setBrain({...brain,adultCharacter:e.target.checked,ageVerifiedAdult:e.target.checked?brain.ageVerifiedAdult:false})} /> Explicitly represented as adult</label><label className="flex items-center gap-2"><input type="checkbox" checked={brain.ageVerifiedAdult} disabled={!brain.adultCharacter} onChange={(e)=>setBrain({...brain,ageVerifiedAdult:e.target.checked})} /> Adult age verified</label></div>
+          <p className="mt-2 text-xs text-zinc-500">Adult conversation remains unavailable unless both fields and provider capability explicitly allow it.</p>
+        </section>
+      )}
       <button
         onClick={update}
         className="mt-5 rounded-2xl bg-fuchsia-500 px-5 py-3 font-bold"

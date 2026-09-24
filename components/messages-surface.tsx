@@ -1,13 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { AppSnapshot, MediaAsset } from "@/lib/domain";
+import type { AppSnapshot, MediaAsset, SceneProposal } from "@/lib/domain";
 
 type CreateScene = (
   media?: MediaAsset,
   conversationId?: string,
   characterId?: string,
   mode?: "image" | "video",
+  proposal?: SceneProposal,
 ) => void;
 
 function relativeTime(value: string) {
@@ -24,12 +25,19 @@ function relativeTime(value: string) {
 
 export function SceneProposalCard({
   character,
+  proposal,
+  data,
+  onAction,
   onCreate,
 }: {
   character?: AppSnapshot["characters"][number];
-  onCreate: () => void;
+  proposal: SceneProposal;
+  data: AppSnapshot;
+  onAction: (action: string, proposalId: string) => void;
+  onCreate: (proposal: SceneProposal) => void;
 }) {
-  if (!character) return null;
+  if (!character || ["REJECTED"].includes(proposal.status)) return null;
+  const statusLabel = proposal.status === "SAVED" ? "Saved idea" : proposal.status === "ACCEPTED" ? "Accepted" : proposal.status.toLowerCase();
   return (
     <section className="my-5 overflow-hidden rounded-3xl border border-fuchsia-400/20 bg-gradient-to-br from-fuchsia-500/15 via-[#18151e] to-[#111218] p-4 shadow-xl shadow-fuchsia-950/10">
       <div className="flex items-center gap-3">
@@ -42,38 +50,22 @@ export function SceneProposalCard({
           <p className="text-xs font-bold uppercase tracking-[.14em] text-fuchsia-200">
             {character.name} has an idea
           </p>
-          <h3 className="font-semibold">Neon after-hours portrait</h3>
-        </div>
-        <span className="ml-auto rounded-full bg-fuchsia-400/15 px-2 py-1 text-[10px] text-fuchsia-100">
-          Fixture
-        </span>
+            <h3 className="font-semibold">{proposal.title}</h3>
+          </div>
+        <span className="ml-auto rounded-full bg-fuchsia-400/15 px-2 py-1 text-[10px] text-fuchsia-100">{statusLabel}</span>
       </div>
-      <p className="mt-3 text-sm leading-relaxed text-zinc-300">
-        A quiet late-night scene with city reflections, a confident look, and
-        cinematic camera movement.
-      </p>
+      <p className="mt-3 text-sm leading-relaxed text-zinc-300">{proposal.concept}</p>
       <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
-        <span className="rounded-full bg-white/[.08] px-2 py-1">City loft</span>
-        <span className="rounded-full bg-white/[.08] px-2 py-1">
-          Editorial look
-        </span>
-        <span className="rounded-full bg-white/[.08] px-2 py-1">
-          Moody light
-        </span>
+        {[proposal.location, proposal.wardrobe, proposal.mood, proposal.lighting, proposal.shotDescription, proposal.cameraDirection, proposal.imageOrVideoIntent === "video" ? `Video · ${proposal.suggestedDuration}s` : "Image"].map((item) => <span key={item} className="rounded-full bg-white/[.08] px-2 py-1">{item}</span>)}
       </div>
+      {!!proposal.suggestedReferenceIds.length && <div className="mt-3 flex gap-2">{proposal.suggestedReferenceIds.map((id) => { const asset=data.media.find((entry)=>entry.id===id); return asset ? <div key={id} className="relative"><img src={asset.posterUrl??asset.url} alt={asset.title} className="h-12 w-12 rounded-lg object-cover"/><span className="absolute inset-x-0 bottom-0 bg-black/70 text-center text-[8px]">{proposal.suggestedReferenceRoles[id]??"Reference"}</span></div> : null; })}</div>}
+      <p className="mt-2 text-[11px] text-zinc-500">{proposal.noveltyReason}</p>
       <div className="mt-4 flex gap-2">
-        <button
-          onClick={onCreate}
-          className="rounded-xl bg-fuchsia-500 px-3 py-2 text-xs font-bold"
-        >
-          Create this scene
-        </button>
-        <button className="rounded-xl bg-white/[.08] px-3 py-2 text-xs">
-          Remix idea
-        </button>
-        <button className="ml-auto rounded-xl px-2 py-2 text-xs text-zinc-400">
-          Save
-        </button>
+        <button onClick={() => onCreate(proposal)} className="rounded-xl bg-fuchsia-500 px-3 py-2 text-xs font-bold">Create this scene</button>
+        <button onClick={() => onAction("remix",proposal.id)} className="rounded-xl bg-white/[.08] px-3 py-2 text-xs">Remix idea</button>
+        <button onClick={() => onAction("another",proposal.id)} className="rounded-xl bg-white/[.08] px-3 py-2 text-xs">Ask for another</button>
+        <button onClick={() => onAction("save",proposal.id)} className="rounded-xl bg-white/[.08] px-3 py-2 text-xs">Save idea</button>
+        <button onClick={() => onAction("reject",proposal.id)} className="ml-auto rounded-xl px-2 py-2 text-xs text-zinc-400">Reject</button>
       </div>
     </section>
   );
@@ -95,6 +87,9 @@ export function PremiumMessages({
   const [text, setText] = useState("");
   const [attachmentId, setAttachmentId] = useState("");
   const [details, setDetails] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [partialReply, setPartialReply] = useState("");
+  const [inspector, setInspector] = useState<unknown>(null);
   const conversation = data.conversations.find((item) => item.id === activeId);
   const character = data.characters.find(
     (item) => item.id === conversation?.characterId,
@@ -125,22 +120,28 @@ export function PremiumMessages({
   );
   const latest = (id: string) =>
     data.messages.filter((item) => item.conversationId === id).at(-1);
-  const send = async () => {
-    if (!text.trim() || !activeId) return;
-    await fetch("/api/actions", {
+  const directorAction = async (action: string, extra: Record<string, unknown> = {}) => {
+    const response = await fetch("/api/director", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "message",
-        conversationId: activeId,
-        text,
-        mediaId: attachmentId || undefined,
-      }),
+      body: JSON.stringify({ action, conversationId: activeId, characterId: character?.id, ...extra }),
     });
-    setText("");
-    setAttachmentId("");
-    await refresh();
+    if (!response.ok) throw new Error((await response.json()).error ?? "Character Director action failed");
+    return response;
   };
+  const send = async () => {
+    if (!text.trim() || !activeId || sending) return;
+    setSending(true);
+    const submitted = text; setText(""); setAttachmentId("");
+    setPartialReply("");
+    try { const response=await directorAction("message",{text:submitted,mediaId:attachmentId||undefined}); const reader=response.body?.getReader(); if(reader){const decoder=new TextDecoder();let buffer="";while(true){const chunk=await reader.read();if(chunk.done)break;buffer+=decoder.decode(chunk.value,{stream:true});const lines=buffer.split("\n");buffer=lines.pop()??"";for(const line of lines){if(!line)continue;const event=JSON.parse(line);if(event.type==="error")throw new Error(event.message);if(event.type==="delta")setPartialReply((current)=>current+event.text);}}} await refresh(); }
+    catch(error) { setText(submitted); console.error(error); }
+    finally { setSending(false); setPartialReply(""); }
+  };
+  const proposalAction = async (action:string, proposalId:string) => { try { await directorAction(action,{proposalId}); await refresh(); } catch(error) { console.error(error); } };
+  const askIdea = async () => { if(!activeId)return; try { await directorAction("ask"); await refresh(); } catch(error) { console.error(error); } };
+  const think = async () => { if(!character)return; try { await directorAction("think",{manual:true}); await refresh(); } catch(error) { console.error(error); } };
+  const proposals = data.proposals.filter((item)=>item.conversationId===activeId);
   const openConversation = (id: string) => {
     setActiveId(id);
     setMobileThread(true);
@@ -265,6 +266,11 @@ export function PremiumMessages({
               Shared scenes and references ·{" "}
               {memory?.pinnedFacts || "No pinned context yet"}
             </p>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              {(["SAVED","PROPOSED","ACCEPTED","GENERATED","REJECTED"] as const).map((status)=>{const items=proposals.filter((proposal)=>proposal.status===status);return <section key={status} className="rounded-xl bg-white/[.035] p-3"><b className="text-[10px] uppercase tracking-widest text-zinc-400">{status} ideas · {items.length}</b>{items.slice(0,3).map((proposal)=><button key={proposal.id} onClick={()=>create(undefined,activeId,character?.id,proposal.imageOrVideoIntent,proposal)} className="mt-2 block w-full truncate text-left text-xs text-fuchsia-200">{proposal.title} · reopen</button>)}</section>;})}
+            </div>
+            <div className="mt-3 flex gap-2"><button onClick={think} className="rounded-lg bg-white/[.08] px-3 py-2 text-xs">Let her think</button><button onClick={async()=>{try{const response=await directorAction("context");setInspector(await response.json());}catch(error){console.error(error);}}} className="rounded-lg bg-white/[.08] px-3 py-2 text-xs">Brain inspector</button></div>
+            {Boolean(inspector) && <pre className="mt-3 max-h-56 overflow-auto rounded-xl bg-black/40 p-3 text-[10px] text-zinc-400">{JSON.stringify(inspector,null,2)}</pre>}
           </div>
         )}
         <div className="min-h-[430px] flex-1 space-y-3 overflow-y-auto px-4 py-5 sm:px-6">
@@ -280,7 +286,7 @@ export function PremiumMessages({
               </div>
             </div>
           )}
-          {messages.map((message, index) => {
+          {messages.map((message) => {
             const attachments = data.attachments
               .filter((item) => item.messageId === message.id)
               .map((item) =>
@@ -335,15 +341,11 @@ export function PremiumMessages({
                     ))}
                   </div>
                 </div>
-                {index === Math.min(1, messages.length - 1) && (
-                  <SceneProposalCard
-                    character={character}
-                    onCreate={() => create(undefined, activeId, character?.id)}
-                  />
-                )}
+                {message.role==="character" && proposals.filter((proposal)=>proposal.sourceMessageIds.includes(message.id)).map((proposal)=><div id={`proposal-${proposal.id}`} key={proposal.id}><SceneProposalCard character={character} proposal={proposal} data={data} onAction={proposalAction} onCreate={async(item)=>{await proposalAction("accept",item.id);create(undefined,activeId,character?.id,item.imageOrVideoIntent,item);}} /></div>)}
               </div>
             );
           })}
+          {sending && <div role="status" aria-live="polite" className="flex gap-2"><img src={character?.portraitUrl} alt="" className="mt-auto h-7 w-7 rounded-full object-cover"/><div className="max-w-[82%] rounded-2xl rounded-bl-md bg-white/[.075] px-3 py-2.5 text-sm leading-relaxed text-zinc-200">{partialReply || `${character?.name?.split(" ")[0] ?? "Character"} is thinking…`}</div></div>}
         </div>
         <footer className="sticky bottom-0 border-t border-white/[.07] bg-[#12151b]/95 p-3 backdrop-blur">
           <div className="mb-2 flex items-center justify-between gap-3">
@@ -353,6 +355,7 @@ export function PremiumMessages({
             >
               ✦ Create Scene with {character?.name?.split(" ")[0]}
             </button>
+            <button onClick={askIdea} className="rounded-full bg-fuchsia-500/15 px-3 py-1.5 text-xs font-semibold text-fuchsia-200">What do you want your next scene to be?</button>
             <select
               aria-label="Attach library media"
               value={attachmentId}
@@ -384,7 +387,7 @@ export function PremiumMessages({
             />
             <button
               onClick={send}
-              disabled={!text.trim()}
+              disabled={!text.trim() || sending}
               className="grid h-11 w-11 place-items-center rounded-2xl bg-fuchsia-500 text-lg disabled:opacity-35"
               aria-label="Send message"
             >

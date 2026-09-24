@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 const dataDir = path.join(process.cwd(), "data");
 fs.mkdirSync(dataDir, { recursive: true });
 const db = new DatabaseSync(path.join(dataDir, "flex-scenes.db"));
+db.exec("PRAGMA busy_timeout=5000;");
 db.exec(`PRAGMA journal_mode=WAL;
 CREATE TABLE IF NOT EXISTS characters (id TEXT PRIMARY KEY,name TEXT,handle TEXT,portraitUrl TEXT,description TEXT,personality TEXT,identityNotes TEXT,defaultsJson TEXT,createdAt TEXT);
 CREATE TABLE IF NOT EXISTS media (id TEXT PRIMARY KEY,characterId TEXT,type TEXT,url TEXT,posterUrl TEXT,title TEXT,caption TEXT,prompt TEXT,providerId TEXT,settingsJson TEXT,parentId TEXT,isReference INTEGER,createdAt TEXT,favorite INTEGER DEFAULT 0);
@@ -28,4 +29,18 @@ CREATE TABLE IF NOT EXISTS providerAssets (mediaId TEXT,provider TEXT,providerAs
 CREATE TABLE IF NOT EXISTS activationAudit (id TEXT PRIMARY KEY,event TEXT,detailJson TEXT,createdAt TEXT);`);
 db.exec(`CREATE TABLE IF NOT EXISTS runtimeSettings (key TEXT PRIMARY KEY,value TEXT,updatedAt TEXT);
 CREATE TABLE IF NOT EXISTS submissionIntents (id TEXT PRIMARY KEY,jobId TEXT,authorizationId TEXT,provider TEXT,deployment TEXT,requestHash TEXT,idempotencyKey TEXT,state TEXT,providerTaskId TEXT,error TEXT,createdAt TEXT,updatedAt TEXT);`);
+db.exec("CREATE TABLE IF NOT EXISTS schemaMigrations (version INTEGER PRIMARY KEY,name TEXT NOT NULL,appliedAt TEXT NOT NULL);");
+const directorMigration = db.prepare("SELECT version FROM schemaMigrations WHERE version=?").get(1);
+if (!directorMigration) {
+  const sql = fs.readFileSync(path.join(process.cwd(), "lib", "migrations", "001_character_director.sql"), "utf8");
+  db.exec("BEGIN IMMEDIATE;");
+  try {
+    db.exec(sql);
+    db.prepare("INSERT INTO schemaMigrations(version,name,appliedAt) VALUES(?,?,?)").run(1,"character-director-m1",new Date().toISOString());
+    db.exec("COMMIT;");
+  } catch (error) {
+    db.exec("ROLLBACK;");
+    throw error;
+  }
+}
 export { db };
