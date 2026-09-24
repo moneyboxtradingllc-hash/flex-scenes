@@ -61,11 +61,10 @@ export function SceneProposalCard({
       {!!proposal.suggestedReferenceIds.length && <div className="mt-3 flex gap-2">{proposal.suggestedReferenceIds.map((id) => { const asset=data.media.find((entry)=>entry.id===id); return asset ? <div key={id} className="relative"><img src={asset.posterUrl??asset.url} alt={asset.title} className="h-12 w-12 rounded-lg object-cover"/><span className="absolute inset-x-0 bottom-0 bg-black/70 text-center text-[8px]">{proposal.suggestedReferenceRoles[id]??"Reference"}</span></div> : null; })}</div>}
       <p className="mt-2 text-[11px] text-zinc-500">{proposal.noveltyReason}</p>
       <div className="mt-4 flex gap-2">
-        <button onClick={() => onCreate(proposal)} className="rounded-xl bg-fuchsia-500 px-3 py-2 text-xs font-bold">Create this scene</button>
+        {(["GENERATED","REJECTED","REMIXED"] as string[]).includes(proposal.status) ? <button onClick={() => onAction("remix",proposal.id)} className="rounded-xl bg-fuchsia-500 px-3 py-2 text-xs font-bold">Remix this idea</button> : <button onClick={() => onCreate(proposal)} className="rounded-xl bg-fuchsia-500 px-3 py-2 text-xs font-bold">Create this scene</button>}
         <button onClick={() => onAction("remix",proposal.id)} className="rounded-xl bg-white/[.08] px-3 py-2 text-xs">Remix idea</button>
         <button onClick={() => onAction("another",proposal.id)} className="rounded-xl bg-white/[.08] px-3 py-2 text-xs">Ask for another</button>
-        <button onClick={() => onAction("save",proposal.id)} className="rounded-xl bg-white/[.08] px-3 py-2 text-xs">Save idea</button>
-        <button onClick={() => onAction("reject",proposal.id)} className="ml-auto rounded-xl px-2 py-2 text-xs text-zinc-400">Reject</button>
+        {!(["GENERATED","REJECTED","REMIXED"] as string[]).includes(proposal.status) && <><button onClick={() => onAction("save",proposal.id)} className="rounded-xl bg-white/[.08] px-3 py-2 text-xs">Save idea</button><button onClick={() => onAction("reject",proposal.id)} className="ml-auto rounded-xl px-2 py-2 text-xs text-zinc-400">Reject</button></>}
       </div>
     </section>
   );
@@ -267,9 +266,9 @@ export function PremiumMessages({
               {memory?.pinnedFacts || "No pinned context yet"}
             </p>
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
-              {(["SAVED","PROPOSED","ACCEPTED","GENERATED","REJECTED"] as const).map((status)=>{const items=proposals.filter((proposal)=>proposal.status===status);return <section key={status} className="rounded-xl bg-white/[.035] p-3"><b className="text-[10px] uppercase tracking-widest text-zinc-400">{status} ideas · {items.length}</b>{items.slice(0,3).map((proposal)=><button key={proposal.id} onClick={()=>create(undefined,activeId,character?.id,proposal.imageOrVideoIntent,proposal)} className="mt-2 block w-full truncate text-left text-xs text-fuchsia-200">{proposal.title} · reopen</button>)}</section>;})}
+              {(["SAVED","PROPOSED","ACCEPTED","GENERATED","REJECTED"] as const).map((status)=>{const items=proposals.filter((proposal)=>proposal.status===status);return <section key={status} className="rounded-xl bg-white/[.035] p-3"><b className="text-[10px] uppercase tracking-widest text-zinc-400">{status} ideas · {items.length}</b>{items.slice(0,3).map((proposal)=><button key={proposal.id} onClick={async()=>{if(["GENERATED","REJECTED","REMIXED"].includes(proposal.status)){await proposalAction("remix",proposal.id);await refresh();return;}if(proposal.status!=="ACCEPTED")await proposalAction("accept",proposal.id);create(undefined,activeId,character?.id,proposal.imageOrVideoIntent,proposal);}} className="mt-2 block w-full truncate text-left text-xs text-fuchsia-200">{proposal.title} · reopen</button>)}</section>;})}
             </div>
-            <div className="mt-3 flex gap-2"><button onClick={think} className="rounded-lg bg-white/[.08] px-3 py-2 text-xs">Let her think</button><button onClick={async()=>{try{const response=await directorAction("context");setInspector(await response.json());}catch(error){console.error(error);}}} className="rounded-lg bg-white/[.08] px-3 py-2 text-xs">Brain inspector</button></div>
+            <div className="mt-3 flex gap-2"><button onClick={think} className="rounded-lg bg-white/[.08] px-3 py-2 text-xs">Let her think</button>{process.env.NODE_ENV==="development"&&<button onClick={async()=>{try{const response=await directorAction("context");setInspector(await response.json());}catch(error){console.error(error);}}} className="rounded-lg bg-white/[.08] px-3 py-2 text-xs">Brain inspector</button>}</div>
             {Boolean(inspector) && <pre className="mt-3 max-h-56 overflow-auto rounded-xl bg-black/40 p-3 text-[10px] text-zinc-400">{JSON.stringify(inspector,null,2)}</pre>}
           </div>
         )}

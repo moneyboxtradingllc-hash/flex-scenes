@@ -2,12 +2,15 @@ import { randomUUID } from "node:crypto";
 import type { CharacterBrainContext, CharacterBrainResponse, CharacterProfile, ConversationProviderDeployment, ConversationSummary, CreativeMemory, GenerationJob, MediaAsset, NoveltySignal, RecentCreativeScene, SceneProposal, SceneProposalStatus } from "./domain";
 import { emptyCreativeMemory, fixtureCharacterProfile } from "./brain-defaults";
 import { repository } from "./repository";
+import { mockImageCapabilities, mockVideoCapabilities } from "./providers";
 
 const now=()=>new Date().toISOString();
 const parse=<T,>(value:string,fallback:T):T=>{try{return JSON.parse(value) as T;}catch{return fallback;}};
 const unique=(values:string[],limit=20)=>Array.from(new Set(values.filter(Boolean))).slice(0,limit);
 const words=(value:string)=>value.toLocaleLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g," ").trim();
 const DIMENSIONS:[keyof RecentCreativeScene,string][]=[["location","location"],["wardrobe","wardrobe"],["lighting","lighting"],["mood","mood"],["shotType","shot"],["cameraDirection","camera"]];
+const ALLOWED_PROPOSAL_TRANSITIONS:Record<SceneProposalStatus,SceneProposalStatus[]>={DRAFT:["PROPOSED","REJECTED"],PROPOSED:["SAVED","ACCEPTED","REJECTED","REMIXED"],SAVED:["ACCEPTED","REJECTED","REMIXED"],ACCEPTED:["REJECTED","REMIXED"],REJECTED:["REMIXED"],REMIXED:[],GENERATED:[]};
+class DuplicateSceneProposalError extends Error { constructor(){super("The initiative draft duplicates a recent scene.");this.name="DuplicateSceneProposalError";} }
 
 export interface ConversationRequest { context:CharacterBrainContext; userText:string; }
 export interface DirectorRequest { context:CharacterBrainContext; variationIndex:number; parent?:SceneProposal; rejectedProposal?:SceneProposal; variation?:string; }
@@ -59,6 +62,8 @@ export function validateCharacterBrainResponse(value:unknown):value is Character
   if(!proposal)return false;
   const required=["title","naturalLanguagePitch","concept","location","wardrobe","mood","lighting","shotDescription","cameraDirection","suggestedAspectRatio","proposedImagePlan","proposedVideoPlan","noveltyReason"];
   if(!required.every((key)=>typeof proposal[key]==="string"&&String(proposal[key]).trim().length>0&&String(proposal[key]).length<=2400))return false;
+  if(!/^\d{1,2}:\d{1,2}$/.test(String(proposal.suggestedAspectRatio)))return false;
+  if(proposal.status!==undefined&&!(["DRAFT","PROPOSED","SAVED","ACCEPTED","REJECTED","REMIXED","GENERATED"] as unknown[]).includes(proposal.status))return false;
   if(!["image","video"].includes(String(proposal.imageOrVideoIntent)))return false;
   if(proposal.imageOrVideoIntent==="video"&&(typeof proposal.suggestedDuration!=="number"||proposal.suggestedDuration<1||proposal.suggestedDuration>60))return false;
   if(proposal.imageOrVideoIntent==="image"&&proposal.suggestedDuration!==null&&proposal.suggestedDuration!==undefined)return false;
@@ -97,7 +102,7 @@ export class MockCharacterBrainProvider implements CharacterConversationProvider
     for(const chunk of chunks){await new Promise((resolve)=>setTimeout(resolve,14));yield chunk;}
   }
   propose({context,variationIndex,parent,rejectedProposal,variation}:DirectorRequest):CharacterBrainResponse {
-    const profile=context.profile.creativeProfile;
+    const profile=context.profile.creativeProfile;const voice=context.profile.conversationalProfile;
     const environments=profile.favoriteEnvironments.length?profile.favoriteEnvironments:["a sunlit studio"];
     const wardrobes=profile.wardrobeCategories.length?profile.wardrobeCategories:["an editorial look"];
     const moods=profile.preferredMoods.length?profile.preferredMoods:["quiet confidence"];
@@ -115,14 +120,14 @@ export class MockCharacterBrainProvider implements CharacterConversationProvider
       const tiredMatch=profile.ideasTiredOf.some((idea)=>{const terms=words(idea).split(" ").filter((term)=>term.length>3);return terms.length>0&&terms.every((term)=>sceneText.includes(term));});
       const adjustedNovelty=score.noveltyScore*profile.noveltyPreference+(1-profile.noveltyPreference)*0.5-(tiredMatch?0.35:0);
       if(!best||adjustedNovelty>best.noveltyScore){chosen=scene;best={...score,noveltyScore:Math.max(0,adjustedNovelty),similarityScore:1-Math.max(0,adjustedNovelty)};chosenIndex=n;}
-      if(score.noveltyScore>=0.8)break;
+      if(adjustedNovelty>=0.8)break;
     }
     const scene=chosen!;const novelty=best!;const imageOrVideoIntent:SceneProposal["imageOrVideoIntent"]=profile.mediaBalance==="balanced"?(chosenIndex%2?"video":"image"):profile.mediaBalance;
     const title=scene.location!.toLowerCase().includes("train")?"Before the First Train":scene.location!.toLowerCase().includes("diner")?"Before the Coffee Cools":scene.location!.toLowerCase().includes("roof")?"Above the City Glow":scene.location!.toLowerCase().includes("sunroom")?"Light Finds the Table":scene.location!.toLowerCase().includes("gallery")?"Quiet Between Frames":scene.location!.toLowerCase().includes("courtyard")?"A Little Sun in the Courtyard":`A New Frame at ${scene.location!.replace(/^(a|an|the) /i,"").replace(/\b\w/g,(c)=>c.toUpperCase())}`;
     const imagePlan=`${context.character.name} in ${scene.location}, wearing ${scene.wardrobe}. ${scene.mood}, lit with ${scene.lighting}. ${scene.shotType}; ${scene.cameraDirection}. ${profile.visualThemes.join(", ")}. Maintain the character's canonical visual identity.`;
     const videoPlan=`${context.character.name} in ${scene.location}, wearing ${scene.wardrobe}. ${scene.mood}; ${scene.lighting}. ${scene.shotType} with ${scene.cameraDirection}. Natural restrained motion; keep face and outfit consistent.`;
-    const pitch=profile.speakingStyle.toLowerCase().includes("economical")?`I’ve got a thought. Let’s leave the soft, familiar setups behind and use ${scene.location} for a ${scene.mood} frame. The ${scene.wardrobe} and ${scene.lighting} give the composition a clear line; I’d keep the camera ${scene.cameraDirection}.`:
-      profile.speakingStyle.toLowerCase().includes("lively")?`I have a fun one for us: ${scene.location}, with ${scene.wardrobe} and all that ${scene.lighting}. I want it to feel ${scene.mood}, like we caught a little moment that was just about to happen. Let the camera ${scene.cameraDirection}.`:
+    const pitch=voice.speakingStyle.toLowerCase().includes("economical")?`I’ve got a thought. Let’s leave the soft, familiar setups behind and use ${scene.location} for a ${scene.mood} frame. The ${scene.wardrobe} and ${scene.lighting} give the composition a clear line; I’d keep the camera ${scene.cameraDirection}.`:
+      voice.speakingStyle.toLowerCase().includes("lively")?`I have a fun one for us: ${scene.location}, with ${scene.wardrobe} and all that ${scene.lighting}. I want it to feel ${scene.mood}, like we caught a little moment that was just about to happen. Let the camera ${scene.cameraDirection}.`:
       `I want to change the rhythm a little. Let’s meet at ${scene.location} in ${scene.wardrobe}, with ${scene.lighting} settling into a ${scene.mood} frame. I’m picturing a ${scene.shotType} and a camera that stays ${scene.cameraDirection}.`;
     const ideaToTry=profile.ideasToTry.length?profile.ideasToTry[chosenIndex%profile.ideasToTry.length]:"";
     const boldNote=profile.creativeBoldness>0.7?" Add one unexpected visual interruption while keeping her identity clear.":" Keep the styling intentional and the visual direction restrained.";
@@ -147,7 +152,9 @@ export class CharacterInitiativeEngine {
     if(!options.manual&&profile.initiativeLevel==="CREATIVE"&&!cue){repository.saveInitiativeState(state);return {outcome:"NO_ACTION",reason:"no_relevant_conversation_cue",state};}
     if(!options.manual&&(!isDue||state.dailyCount>=state.maxPerDay)){repository.saveInitiativeState(state);return {outcome:"NO_ACTION",reason:!isDue?"cooldown":"daily_limit",state};}
     if(!convo){repository.saveInitiativeState(state);return {outcome:"NO_ACTION",reason:"conversation_missing",state};}
-    const result=characterDirectorService.createProposal({conversationId:convo,source:"proactive"});
+    let result:{proposal:SceneProposal;message:string};
+    try { result=characterDirectorService.createProposal({conversationId:convo,source:"proactive"}); }
+    catch(error) { if(error instanceof DuplicateSceneProposalError){repository.saveInitiativeState(state);return {outcome:"NO_ACTION",reason:"duplicate_concept",state};} throw error; }
     const next={...state,lastProactiveProposalAt:time,nextEligibleAt:new Date(Date.parse(time)+state.cooldownSeconds*1000).toISOString(),dailyCount:state.dailyCount+1,dailyCountDate:day};repository.saveInitiativeState(next);
     return {outcome:"CREATE_SCENE_PROPOSAL",proposal:result.proposal,message:result.message,state:next};
   }
@@ -158,15 +165,15 @@ export class CharacterDirectorService {
   readonly directorProvider:CharacterDirectorProvider=this.conversationProvider;
   readonly memoryProvider:ConversationMemoryProvider=new DeterministicConversationMemoryProvider();
   readonly initiativeEngine=new CharacterInitiativeEngine();
-  readonly contextLimits={recentMessages:8,pinnedMemories:8,recentScenes:10,summaryCharacters:360};
+  readonly contextLimits={recentMessages:8,pinnedMemories:8,recentScenes:10,summaryCharacters:360,messageCharacters:1200,pinnedMemoryCharacters:500};
   buildContext(conversationId:string):CharacterBrainContext {
     const conversation=repository.conversations().find((item)=>item.id===conversationId);if(!conversation)throw new Error("Conversation not found");
     const character=repository.character(conversation.characterId);const profile=repository.characterProfile(character.id)??fixtureCharacterProfile(character.id);const allMessages=repository.messages(conversationId);
     const recentMessages=allMessages.slice(-this.contextLimits.recentMessages);let summary=repository.conversationSummary(conversationId);
     if(!summary){summary={conversationId,summary:"",summarizedThroughMessageId:null,summarizedAt:null,pinnedFacts:[],recentUnsummarizedMessageIds:[]};}
-    const oldMessages=allMessages.filter((item)=>summary!.summarizedThroughMessageId?allMessages.findIndex((m)=>m.id===item.id)<=allMessages.findIndex((m)=>m.id===summary!.summarizedThroughMessageId):!recentMessages.some((recent)=>recent.id===item.id));
-    if(oldMessages.length&&(!summary.summarizedAt||oldMessages.at(-1)?.id!==summary.summarizedThroughMessageId)){
-      const result=this.memoryProvider.summarize(oldMessages);summary={...summary,summary:result.summary.slice(0,this.contextLimits.summaryCharacters),summarizedThroughMessageId:result.summarizedThroughMessageId,summarizedAt:now()};repository.saveConversationSummary(summary);
+    const summarizableMessages=allMessages.slice(0,Math.max(0,allMessages.length-this.contextLimits.recentMessages));
+    if(summarizableMessages.length&&summarizableMessages.at(-1)?.id!==summary.summarizedThroughMessageId){
+      const result=this.memoryProvider.summarize(summarizableMessages);summary={...summary,summary:result.summary.slice(0,this.contextLimits.summaryCharacters),summarizedThroughMessageId:result.summarizedThroughMessageId,summarizedAt:now()};repository.saveConversationSummary(summary);
     }
     const lastSummaryIndex=summary.summarizedThroughMessageId?allMessages.findIndex((item)=>item.id===summary!.summarizedThroughMessageId):-1;
     const recentUnsummarizedMessages=allMessages.slice(lastSummaryIndex+1).slice(-this.contextLimits.recentMessages);
@@ -179,7 +186,8 @@ export class CharacterDirectorService {
     const seen=new Set(storedScenes.map((item)=>item.mediaId));
     const mediaHistory=repository.mediaByCharacter(character.id).slice(0,8).filter((asset)=>!seen.has(asset.id)).map((asset)=>{const settings=parse<Record<string,unknown>>(asset.settingsJson,{});const scene=settings.sceneContext as Record<string,string>|undefined;return {mediaId:asset.id,title:asset.title,location:scene?.location,wardrobe:scene?.wardrobe,lighting:scene?.lighting,mood:scene?.mood,shotType:scene?.shotDescription,cameraDirection:scene?.cameraDirection,referenceIds:Array.isArray(settings.referenceAssetIds)?settings.referenceAssetIds as string[]:[]};});
     const recentCreativeHistory=[...proposalHistory,...storedScenes,...mediaHistory].slice(0,this.contextLimits.recentScenes);
-    return {character,profile,conversationId,conversationSummary:{...summary,pinnedFacts:unique([...summary.pinnedFacts,...legacyPinned])},recentMessages,recentUnsummarizedMessages,pinnedMemories:pinned,creativeMemory:profileMemory,recentCreativeHistory,visualIdentity:{identityNotes:character.identityNotes,generationDefaults:parse(character.defaultsJson,{}),canonicalReferences:repository.characterReferences(character.id).filter((item)=>item.active&&item.canonical).slice(0,8)},limits:{...this.contextLimits}};
+    const bounded=(message:typeof recentMessages[number])=>({...message,body:message.body.slice(0,this.contextLimits.messageCharacters)});
+    return {character,profile,conversationId,conversationSummary:{...summary,summary:summary.summary.slice(0,this.contextLimits.summaryCharacters),pinnedFacts:unique([...summary.pinnedFacts,...legacyPinned]).map((fact)=>fact.slice(0,this.contextLimits.pinnedMemoryCharacters))},recentMessages:recentMessages.map(bounded),recentUnsummarizedMessages:recentUnsummarizedMessages.map(bounded),pinnedMemories:pinned.map((memory)=>({...memory,body:memory.body.slice(0,this.contextLimits.pinnedMemoryCharacters)})),creativeMemory:profileMemory,recentCreativeHistory,visualIdentity:{identityNotes:character.identityNotes.slice(0,this.contextLimits.messageCharacters),generationDefaults:parse(character.defaultsJson,{}),canonicalReferences:repository.characterReferences(character.id).filter((item)=>item.active&&item.canonical).slice(0,8)},limits:{...this.contextLimits}};
   }
   async respondToMessage(conversationId:string,userText:string,mediaId?:string) {
     if(!userText.trim())throw new Error("Message is empty");
@@ -204,12 +212,26 @@ export class CharacterDirectorService {
   }
   createProposal(options:{conversationId:string;source:"conversation"|"proactive"|"remix";sourceMessageIds?:string[];parentProposalId?:string;rejectedProposalId?:string;variation?:string}) {
     const context=this.buildContext(options.conversationId);const prior=options.parentProposalId?repository.proposal(options.parentProposalId):undefined;const rejected=options.rejectedProposalId?repository.proposal(options.rejectedProposalId):undefined;
+    if(options.parentProposalId&&(!prior||prior.characterId!==context.character.id||prior.conversationId!==context.conversationId))throw new Error("Parent proposal does not belong to this character conversation.");
+    if(options.rejectedProposalId&&(!rejected||rejected.characterId!==context.character.id||rejected.conversationId!==context.conversationId))throw new Error("Previous proposal does not belong to this character conversation.");
     const variationIndex=repository.proposals({characterId:context.character.id}).length+(prior?3:0)+(rejected?5:0);
     const output=this.directorProvider.propose({context,variationIndex,parent:prior,rejectedProposal:rejected,variation:options.variation});if(!validateCharacterBrainResponse(output)||!output.sceneProposal)throw new Error("Scene proposal failed structured validation");
     const draft=output.sceneProposal;const references=context.visualIdentity.canonicalReferences.slice(0,3);const ids=references.map((item)=>item.mediaId);
-    const roles=Object.fromEntries(references.map((item)=>[item.mediaId,item.role]));const created=now();
-    const proposal:SceneProposal={id:randomUUID(),parentProposalId:options.parentProposalId??null,characterId:context.character.id,conversationId:context.conversationId,title:String(draft.title),naturalLanguagePitch:String(draft.naturalLanguagePitch),concept:String(draft.concept),location:String(draft.location),wardrobe:String(draft.wardrobe),mood:String(draft.mood),lighting:String(draft.lighting),shotDescription:String(draft.shotDescription),cameraDirection:String(draft.cameraDirection),imageOrVideoIntent:draft.imageOrVideoIntent as SceneProposal["imageOrVideoIntent"],suggestedAspectRatio:String(draft.suggestedAspectRatio),suggestedDuration:draft.suggestedDuration==null?null:Number(draft.suggestedDuration),suggestedReferenceIds:ids,suggestedReferenceRoles:roles,proposedImagePlan:String(draft.proposedImagePlan),proposedVideoPlan:String(draft.proposedVideoPlan),noveltyReason:String(draft.noveltyReason),sourceMessageIds:options.sourceMessageIds??[],status:"PROPOSED",proposalSource:options.source,noveltyScore:Number(draft.noveltyScore??output.creativeSignals.noveltyScore??1),similarityScore:Number(draft.similarityScore??output.creativeSignals.similarityScore??0),createdAt:created,updatedAt:created};
-    repository.saveProposal(proposal);if(options.parentProposalId)repository.updateProposal(options.parentProposalId,"REMIXED");
+    if(draft.characterId!==undefined&&draft.characterId!==context.character.id)throw new Error("Scene proposal character association does not match the conversation.");
+    if(draft.conversationId!==undefined&&draft.conversationId!==context.conversationId)throw new Error("Scene proposal conversation association does not match the request.");
+    const supportedRatios=(draft.imageOrVideoIntent==="image"?mockImageCapabilities:mockVideoCapabilities).aspectRatios;
+    if(!supportedRatios.includes(String(draft.suggestedAspectRatio)))throw new Error("Scene proposal aspect ratio is unsupported by the mock generation capability.");
+    if(draft.imageOrVideoIntent==="video"&&!((draft.suggestedDuration===5)||(draft.suggestedDuration===10)))throw new Error("Scene proposal duration is unsupported by the mock video capability.");
+    const allowedReferenceIds=new Set(context.visualIdentity.canonicalReferences.map((item)=>item.mediaId));
+    const suggestedIds=draft.suggestedReferenceIds??[];
+    if(suggestedIds.some((id)=>!repository.asset(id)||(!allowedReferenceIds.has(id)&&!repository.asset(id)?.isReference)))throw new Error("Scene proposal contains an unknown or ineligible reference.");
+    if(options.source==="proactive"){
+      const signal=evaluateNovelty({mediaId:"initiative-draft",title:draft.title,location:draft.location,wardrobe:draft.wardrobe,lighting:draft.lighting,mood:draft.mood,shotType:draft.shotDescription,cameraDirection:draft.cameraDirection},context.recentCreativeHistory,context.profile.creativeProfile.repetitionTolerance);
+      if(signal.repeatedConcept||signal.similarityScore>=0.82)throw new DuplicateSceneProposalError();
+    }
+    const roles={...Object.fromEntries(references.map((item)=>[item.mediaId,item.role])),...(draft.suggestedReferenceRoles??{})};const referenceIds=unique([...ids,...suggestedIds],8);const created=now();
+    const proposal:SceneProposal={id:randomUUID(),parentProposalId:options.parentProposalId??null,characterId:context.character.id,conversationId:context.conversationId,title:String(draft.title),naturalLanguagePitch:String(draft.naturalLanguagePitch),concept:String(draft.concept),location:String(draft.location),wardrobe:String(draft.wardrobe),mood:String(draft.mood),lighting:String(draft.lighting),shotDescription:String(draft.shotDescription),cameraDirection:String(draft.cameraDirection),imageOrVideoIntent:draft.imageOrVideoIntent as SceneProposal["imageOrVideoIntent"],suggestedAspectRatio:String(draft.suggestedAspectRatio),suggestedDuration:draft.suggestedDuration==null?null:Number(draft.suggestedDuration),suggestedReferenceIds:referenceIds,suggestedReferenceRoles:roles,proposedImagePlan:String(draft.proposedImagePlan),proposedVideoPlan:String(draft.proposedVideoPlan),noveltyReason:String(draft.noveltyReason),sourceMessageIds:options.sourceMessageIds??[],status:"PROPOSED",proposalSource:options.source,noveltyScore:Number(draft.noveltyScore??output.creativeSignals.noveltyScore??1),similarityScore:Number(draft.similarityScore??output.creativeSignals.similarityScore??0),createdAt:created,updatedAt:created};
+    repository.saveProposal(proposal);if(options.parentProposalId&&prior?.status!=="GENERATED"&&prior?.status!=="REMIXED")this.setProposalStatus(options.parentProposalId,"REMIXED");
     const character=repository.character(context.character.id);const message=proposal.naturalLanguagePitch;
     this.recordUsage(context,"scene proposal request",message);return {proposal,message,context};
   }
@@ -219,11 +241,17 @@ export class CharacterDirectorService {
   remixProposal(proposalId:string,variation?:string) { const parent=repository.proposal(proposalId);if(!parent)throw new Error("Proposal not found");const result=this.createProposalMessage(parent.conversationId,{source:"remix",parentProposalId:parent.id,variation});const memory=defaultMemory(parent.characterId);memory.remixedProposalIds=unique([parent.id,...memory.remixedProposalIds]);memory.updatedAt=now();repository.saveCreativeMemory(memory);return result; }
   anotherProposal(conversationId:string,previousProposalId?:string) { return this.createProposalMessage(conversationId,{source:"conversation",rejectedProposalId:previousProposalId}); }
   setProposalStatus(proposalId:string,status:SceneProposalStatus,rejectionReason?:string) {
-    const proposal=repository.proposal(proposalId);if(!proposal)throw new Error("Proposal not found");repository.updateProposal(proposalId,status);const memory=defaultMemory(proposal.characterId);
+    const proposal=repository.proposal(proposalId);if(!proposal)throw new Error("Proposal not found");if(status==="GENERATED")throw new Error("A proposal becomes generated only when its linked media completes.");if(proposal.status!==status&&!ALLOWED_PROPOSAL_TRANSITIONS[proposal.status].includes(status))throw new Error(`Invalid proposal transition: ${proposal.status} to ${status}.`);if(proposal.status!==status)repository.updateProposal(proposalId,status);const memory=defaultMemory(proposal.characterId);
     if(status==="SAVED")memory.savedProposalIds=unique([proposalId,...memory.savedProposalIds]);
-    if(status==="ACCEPTED")memory.acceptedProposalIds=unique([proposalId,...memory.acceptedProposalIds]);
-    if(status==="REJECTED"){memory.rejectedProposalIds=unique([proposalId,...memory.rejectedProposalIds]);if(rejectionReason)memory.resultNotes[`proposal:${proposalId}`]=rejectionReason;}
+    if(status==="ACCEPTED"){memory.savedProposalIds=memory.savedProposalIds.filter((id)=>id!==proposalId);memory.acceptedProposalIds=unique([proposalId,...memory.acceptedProposalIds]);}
+    if(status==="REJECTED"){memory.savedProposalIds=memory.savedProposalIds.filter((id)=>id!==proposalId);memory.acceptedProposalIds=memory.acceptedProposalIds.filter((id)=>id!==proposalId);memory.rejectedProposalIds=unique([proposalId,...memory.rejectedProposalIds]);if(rejectionReason)memory.resultNotes[`proposal:${proposalId}`]=rejectionReason;}
+    if(status==="REMIXED"){memory.savedProposalIds=memory.savedProposalIds.filter((id)=>id!==proposalId);memory.acceptedProposalIds=memory.acceptedProposalIds.filter((id)=>id!==proposalId);memory.remixedProposalIds=unique([proposalId,...memory.remixedProposalIds]);}
     memory.updatedAt=now();repository.saveCreativeMemory(memory);return repository.proposal(proposalId)!;
+  }
+  private markProposalGenerated(proposalId:string|null,characterId:string,conversationId:string,mediaId:string) {
+    if(!proposalId)return;
+    const proposal=repository.proposal(proposalId);if(!proposal||proposal.characterId!==characterId||proposal.conversationId!==conversationId||proposal.status!=="ACCEPTED")throw new Error("Completed media is not associated with an accepted scene proposal.");
+    repository.updateProposal(proposalId,"GENERATED");const memory=defaultMemory(characterId);memory.generatedProposalIds=unique([proposalId,...memory.generatedProposalIds]);memory.updatedAt=now();repository.saveCreativeMemory(memory);
   }
   async *streamMessage(conversationId:string,text:string,mediaId?:string):AsyncIterable<string> {
     const result=await this.respondToMessage(conversationId,text,mediaId);
@@ -235,16 +263,16 @@ export class CharacterDirectorService {
     const character=repository.character(job.characterId);const profile=repository.characterProfile(job.characterId)??fixtureCharacterProfile(job.characterId);const input=parse<Record<string,unknown>>(job.settingsJson,{});const scene=(input.sceneContext??{}) as Record<string,string>;
     const sceneDetails=[scene.location,scene.wardrobe,scene.lighting].filter(Boolean).join(", ");
     const message=profile.conversationalProfile.speakingStyle.toLowerCase().includes("economical")?`The composition held together. I’d keep ${scene.lighting||"the light"} and try one cleaner angle next.`:profile.conversationalProfile.speakingStyle.toLowerCase().includes("lively")?`Oh, I love how this turned out${sceneDetails?` at ${scene.location}`:""}. Next I want to see a little more movement through the frame.`:`The ${scene.lighting||"light"} is doing exactly what I hoped. I’d like to see this look move in a slow, quiet shot next.`;
-    const proposalId=typeof input.proposalId==="string"?input.proposalId:null;if(proposalId)repository.updateProposal(proposalId,"GENERATED");
+    const proposalId=typeof input.proposalId==="string"?input.proposalId:null;this.markProposalGenerated(proposalId,character.id,job.conversationId,media.id);
     const characterMessage=repository.addMessage(job.conversationId,"character",message);repository.attachMessage(characterMessage.id,media.id,"generation");
     repository.saveMediaReaction({mediaId:media.id,proposalId,characterId:character.id,messageId:characterMessage.id,payloadJson:JSON.stringify({message,scene,mode:media.type,favorite:media.favorite}),createdAt:now()});
     const memory=defaultMemory(character.id);const sceneRecord:RecentCreativeScene={mediaId:media.id,proposalId:proposalId??undefined,title:media.title,location:scene.location,wardrobe:scene.wardrobe,lighting:scene.lighting,mood:scene.mood,shotType:scene.shotDescription,cameraDirection:scene.cameraDirection,referenceIds:Array.isArray(input.referenceAssetIds)?input.referenceAssetIds as string[]:[]};
-    memory.recentScenes=[sceneRecord,...memory.recentScenes.filter((item)=>item.mediaId!==media.id)].slice(0,20);memory.recentSceneIds=unique([media.id,...memory.recentSceneIds]);memory.recentLocations=unique([sceneRecord.location??"",...memory.recentLocations]);memory.recentWardrobes=unique([sceneRecord.wardrobe??"",...memory.recentWardrobes]);memory.recentLightings=unique([sceneRecord.lighting??"",...memory.recentLightings]);memory.recentMoods=unique([sceneRecord.mood??"",...memory.recentMoods]);memory.recentShotTypes=unique([sceneRecord.shotType??"",...memory.recentShotTypes]);memory.recentCameraDirections=unique([sceneRecord.cameraDirection??"",...memory.recentCameraDirections]);memory.recentReferencePacks=[sceneRecord.referenceIds??[],...memory.recentReferencePacks].slice(0,20);if(proposalId)memory.generatedProposalIds=unique([proposalId,...memory.generatedProposalIds]);memory.updatedAt=now();repository.saveCreativeMemory(memory);
+    memory.recentScenes=[sceneRecord,...memory.recentScenes.filter((item)=>item.mediaId!==media.id)].slice(0,20);memory.recentSceneIds=unique([media.id,...memory.recentSceneIds]);memory.recentLocations=unique([sceneRecord.location??"",...memory.recentLocations]);memory.recentWardrobes=unique([sceneRecord.wardrobe??"",...memory.recentWardrobes]);memory.recentLightings=unique([sceneRecord.lighting??"",...memory.recentLightings]);memory.recentMoods=unique([sceneRecord.mood??"",...memory.recentMoods]);memory.recentShotTypes=unique([sceneRecord.shotType??"",...memory.recentShotTypes]);memory.recentCameraDirections=unique([sceneRecord.cameraDirection??"",...memory.recentCameraDirections]);memory.recentReferencePacks=[sceneRecord.referenceIds??[],...memory.recentReferencePacks].slice(0,20);memory.updatedAt=now();repository.saveCreativeMemory(memory);
     const context=this.buildContext(job.conversationId);this.recordUsage(context,"generation result reaction",message);
   }
-  rememberFavorite(mediaId:string) { const asset=repository.asset(mediaId);if(!asset?.favorite)return;const memory=defaultMemory(asset.characterId);memory.favoriteMediaIds=unique([mediaId,...memory.favoriteMediaIds]);memory.updatedAt=now();repository.saveCreativeMemory(memory); }
+  rememberFavorite(mediaId:string) { const asset=repository.asset(mediaId);if(!asset)return;const memory=defaultMemory(asset.characterId);memory.favoriteMediaIds=asset.favorite?unique([mediaId,...memory.favoriteMediaIds]):memory.favoriteMediaIds.filter((id)=>id!==mediaId);memory.updatedAt=now();repository.saveCreativeMemory(memory); }
   rememberNote(mediaId:string,note:string) { const asset=repository.asset(mediaId);if(!asset)return;const memory=defaultMemory(asset.characterId);if(note.trim())memory.resultNotes[mediaId]=note.trim().slice(0,1200);else delete memory.resultNotes[mediaId];memory.updatedAt=now();repository.saveCreativeMemory(memory); }
-  private recordUsage(context:CharacterBrainContext,input:string,output:string) { const provider=this.conversationProvider.deployment;repository.addChatUsage({id:randomUUID(),providerId:provider.providerId,model:provider.model,characterId:context.character.id,conversationId:context.conversationId,inputTokens:Math.ceil((input.length+context.recentMessages.reduce((n,m)=>n+m.body.length,0))/4),outputTokens:Math.ceil(output.length/4),estimatedCost:0,actualCost:0,createdAt:now()}); }
+  private recordUsage(context:CharacterBrainContext,input:string,output:string) { const provider=this.conversationProvider.deployment;repository.addChatUsage({id:randomUUID(),providerId:provider.providerId,model:provider.model,characterId:context.character.id,conversationId:context.conversationId,inputTokens:Math.ceil((input.slice(0,this.contextLimits.messageCharacters).length+context.recentMessages.reduce((n,m)=>n+m.body.length,0))/4),outputTokens:Math.ceil(output.length/4),estimatedCost:0,actualCost:0,createdAt:now()}); }
   private noteNaturalInitiative(characterId:string) { const profile=repository.characterProfile(characterId);if(!profile)return;const time=now();const day=time.slice(0,10);const state=repository.initiativeState(characterId)??{characterId,lastEvaluatedAt:null,nextEligibleAt:null,lastProactiveProposalAt:null,dailyCount:0,dailyCountDate:day,cooldownSeconds:28800,maxPerDay:1};repository.saveInitiativeState({...state,lastEvaluatedAt:time,lastProactiveProposalAt:time,nextEligibleAt:new Date(Date.parse(time)+state.cooldownSeconds*1000).toISOString(),dailyCount:state.dailyCountDate===day?state.dailyCount+1:1,dailyCountDate:day}); }
 }
 

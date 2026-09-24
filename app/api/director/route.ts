@@ -19,7 +19,6 @@ export async function POST(request:Request){
     if(body.action==="save"&&body.proposalId)return json(characterDirectorService.setProposalStatus(body.proposalId,"SAVED"));
     if(body.action==="reject"&&body.proposalId)return json(characterDirectorService.setProposalStatus(body.proposalId,"REJECTED",body.rejectionReason));
     if(body.action==="accept"&&body.proposalId)return json(characterDirectorService.setProposalStatus(body.proposalId,"ACCEPTED"));
-    if(body.action==="generated"&&body.proposalId)return json(characterDirectorService.setProposalStatus(body.proposalId,"GENERATED"));
     if(body.action==="think"&&body.characterId){
       const result=characterDirectorService.initiativeEngine.evaluate(body.characterId,{manual:body.manual??true,conversationId:body.conversationId});
       if(result.outcome==="NO_ACTION")return json(result);

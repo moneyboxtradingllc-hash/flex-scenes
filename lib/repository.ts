@@ -11,7 +11,7 @@ export class SqliteFlexRepository {
   updateCharacter(id:string, patch:Partial<Pick<Character,"name"|"handle"|"portraitUrl"|"description"|"personality"|"identityNotes"|"defaultsJson">>) { const current=this.character(id); const next={...current,...patch}; db.prepare("UPDATE characters SET name=?,handle=?,portraitUrl=?,description=?,personality=?,identityNotes=?,defaultsJson=? WHERE id=?").run(next.name,next.handle,next.portraitUrl,next.description,next.personality,next.identityNotes,next.defaultsJson,id); return this.character(id); }
   media() { return db.prepare("SELECT * FROM media ORDER BY createdAt DESC").all().map(bool) as unknown as MediaAsset[]; }
   mediaByCharacter(id: string) { return db.prepare("SELECT * FROM media WHERE characterId=? ORDER BY createdAt DESC").all(id).map(bool) as unknown as MediaAsset[]; }
-  asset(id: string) { return bool(db.prepare("SELECT * FROM media WHERE id=?").get(id) as Record<string, unknown>) as unknown as MediaAsset; }
+  asset(id: string):MediaAsset|undefined { const row=db.prepare("SELECT * FROM media WHERE id=?").get(id) as Record<string,unknown>|undefined;return row?bool(row) as unknown as MediaAsset:undefined; }
   jobs() { return db.prepare("SELECT * FROM jobs ORDER BY createdAt DESC").all() as unknown as GenerationJob[]; }
   job(id: string) { return db.prepare("SELECT * FROM jobs WHERE id=?").get(id) as unknown as GenerationJob; }
   saveJob(job: GenerationJob) { db.prepare("INSERT INTO jobs VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)").run(job.id,job.characterId,job.mode,job.prompt,job.status,job.providerId,job.settingsJson,job.parentMediaId,job.conversationId,job.createdAt,job.updatedAt,job.error,job.mediaId); }
