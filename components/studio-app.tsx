@@ -2,58 +2,2257 @@
 // @ts-nocheck
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import type { AppSnapshot, GenerationInput, GenerationJob, MediaAsset } from "@/lib/domain";
+import type {
+  AppSnapshot,
+  GenerationInput,
+  GenerationJob,
+  MediaAsset,
+} from "@/lib/domain";
 import { PremiumHome } from "@/components/home-surface";
 import { PremiumCharacterHub } from "@/components/character-hub-surface";
 import { PremiumCreateStudio } from "@/components/create-studio-surface";
+import { PremiumMessages } from "@/components/messages-surface";
 
-type View = "home"|"explore"|"create"|"reels"|"messages"|"library"|"character"|"settings"|"jobs"|"collections"|"lab";
-const icon:Record<string,string>={home:"⌂",explore:"⌕",create:"＋",reels:"▶",messages:"✦",library:"▦",profile:"◎",jobs:"◷",collections:"□",heart:"♥",note:"⌁",more:"•••"};
-const nav=[['home','Home'],['explore','Explore'],['create','Create'],['reels','Reels'],['profile','Profile']] as const;
-const time=(value:string)=>new Intl.DateTimeFormat(undefined,{month:"short",day:"numeric"}).format(new Date(value));
-const json=<T,>(r:Response)=>r.json() as Promise<T>;
+type View =
+  | "home"
+  | "explore"
+  | "create"
+  | "reels"
+  | "messages"
+  | "library"
+  | "character"
+  | "settings"
+  | "jobs"
+  | "collections"
+  | "lab";
+const icon: Record<string, string> = {
+  home: "⌂",
+  explore: "⌕",
+  create: "＋",
+  reels: "▶",
+  messages: "✦",
+  library: "▦",
+  profile: "◎",
+  jobs: "◷",
+  collections: "□",
+  heart: "♥",
+  note: "⌁",
+  more: "•••",
+};
+const nav = [
+  ["home", "Home"],
+  ["explore", "Explore"],
+  ["create", "Create"],
+  ["reels", "Reels"],
+  ["profile", "Profile"],
+] as const;
+const time = (value: string) =>
+  new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(
+    new Date(value),
+  );
+const json = <T,>(r: Response) => r.json() as Promise<T>;
 
-export function StudioApp({initial,route}:{initial:AppSnapshot;route:string}) {
- const [data,setData]=useState(initial); const [view,setView]=useState<View>(route.startsWith("character")?"character":(route.split("/")[0] as View)||"home"); const [activeCharacter,setActiveCharacter]=useState(initial.characters[0]?.id); const [selected,setSelected]=useState<MediaAsset|null>(null); const [createContext,setCreateContext]=useState<{parent?:MediaAsset;conversationId?:string;characterId?:string;mode?:"image"|"video"}>({});
- const refresh=async()=>setData(await json<AppSnapshot>(await fetch("/api/bootstrap",{cache:"no-store"})));
- const go=(next:View,context?:typeof createContext)=>{setView(next); if(context)setCreateContext(context); window.history.pushState({},"",next==="home"?"/":`/${next}`);};
- const active= data.characters.find(c=>c.id===activeCharacter)??data.characters[0];
- const favorite=async(id:string)=>{await fetch("/api/actions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"favorite",mediaId:id})});await refresh();};
- const reference=async(id:string)=>{await fetch("/api/actions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"reference",mediaId:id})});await refresh();};
- const createFrom=(parent?:MediaAsset,conversationId?:string,characterId?:string,mode?:"image"|"video")=>go("create",{parent,conversationId,characterId:characterId??parent?.characterId,mode});
- const header=<header className="sticky top-0 z-20 flex items-center justify-between border-b border-white/8 bg-[#08090d]/90 px-5 py-4 backdrop-blur"><button onClick={()=>go("home")} className="text-xl font-black tracking-[-.08em]">flex<span className="text-fuchsia-400">.</span>scenes</button><div className="flex gap-2"><button aria-label="Messages" onClick={()=>go("messages")} className="rounded-full bg-white/7 px-3 py-2 text-sm">{icon.messages}</button><button aria-label="Library" onClick={()=>go("library")} className="rounded-full bg-white/7 px-3 py-2 text-sm">{icon.library}</button></div></header>;
- return <main className="mx-auto min-h-screen max-w-[1680px] bg-[#08090d] pb-20 text-zinc-100 md:grid md:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[220px_minmax(0,1fr)_300px] md:pb-0">
-  <aside className="hidden border-r border-white/8 bg-[#0c0d12] p-5 md:block"><button onClick={()=>go("home")} className="mb-9 text-2xl font-black tracking-[-.08em]">flex<span className="text-fuchsia-400">.</span>scenes</button>{nav.map(([id,label])=><NavButton key={id} id={id} label={label} active={view===id} onClick={()=>go(id as View)}/>) }<NavButton id="messages" label="Messages" active={view==="messages"} onClick={()=>go("messages")}/><NavButton id="library" label="Library" active={view==="library"} onClick={()=>go("library")}/><NavButton id="jobs" label="Activity" active={view==="jobs"} onClick={()=>go("jobs")}/><NavButton id="collections" label="Collections" active={view==="collections"} onClick={()=>go("collections")}/><button onClick={()=>go("lab")} className="mt-5 text-xs text-zinc-600 hover:text-fuchsia-300">Developer Provider Lab</button></aside>
-  <section className="min-w-0 border-x border-white/5">{header}<div className="mx-auto w-full max-w-[900px] p-4 md:p-7">{view==="home"&&<Home data={data} go={go} select={setSelected} favorite={favorite} reference={reference} create={createFrom} setCharacter={setActiveCharacter}/>} {view==="explore"&&<Explore data={data} select={setSelected}/>} {view==="create"&&<CapabilityCreate data={data} context={createContext} onComplete={async()=>{await refresh();go("library");}}/>} {view==="reels"&&<Reels data={data} select={setSelected} create={createFrom}/>} {view==="messages"&&<EnhancedMessages data={data} create={createFrom} refresh={refresh}/>} {view==="library"&&<Library data={data} select={setSelected}/>} {view==="character"&&<CharacterHub data={data} character={active} select={setSelected} create={createFrom} go={go}/>} {view==="settings"&&<CharacterSettings data={data} character={active} refresh={refresh} go={go}/>} {view==="jobs"&&<JobCenter data={data} select={setSelected} refresh={refresh}/>} {view==="collections"&&<Collections data={data} refresh={refresh} select={setSelected}/>} {view==="lab"&&<ProviderLab data={data} go={go}/>}</div></section><ContextRail data={data} character={active} view={view} go={go}/>
-  <nav className="fixed bottom-0 left-0 right-0 z-30 flex justify-around border-t border-white/10 bg-[#111218]/95 px-2 py-2 backdrop-blur md:hidden">{nav.map(([id,label])=><button key={id} onClick={()=>go(id as View)} className={`grid place-items-center gap-0.5 rounded-xl px-3 py-1 text-[10px] ${view===id?"text-fuchsia-300":"text-zinc-400"}`}><span className={id==="create"?"rounded-full bg-fuchsia-500 px-2 py-0.5 text-base text-white":"text-lg"}>{icon[id]}</span>{label}</button>)}</nav>
-  {selected&&<Detail data={data} asset={selected} character={data.characters.find(c=>c.id===selected.characterId)} close={()=>setSelected(null)} favorite={favorite} reference={reference} remix={()=>{setSelected(null);createFrom(selected);}} animate={()=>{setSelected(null);createFrom(selected,undefined,undefined,"video");}}/>}
- </main>;
+export function StudioApp({
+  initial,
+  route,
+}: {
+  initial: AppSnapshot;
+  route: string;
+}) {
+  const [data, setData] = useState(initial);
+  const [view, setView] = useState<View>(
+    route.startsWith("character")
+      ? "character"
+      : (route.split("/")[0] as View) || "home",
+  );
+  const [activeCharacter, setActiveCharacter] = useState(
+    initial.characters[0]?.id,
+  );
+  const [selected, setSelected] = useState<MediaAsset | null>(null);
+  const [createContext, setCreateContext] = useState<{
+    parent?: MediaAsset;
+    conversationId?: string;
+    characterId?: string;
+    mode?: "image" | "video";
+  }>({});
+  const refresh = async () =>
+    setData(
+      await json<AppSnapshot>(
+        await fetch("/api/bootstrap", { cache: "no-store" }),
+      ),
+    );
+  const go = (next: View, context?: typeof createContext) => {
+    setView(next);
+    if (context) setCreateContext(context);
+    window.history.pushState({}, "", next === "home" ? "/" : `/${next}`);
+  };
+  const active =
+    data.characters.find((c) => c.id === activeCharacter) ?? data.characters[0];
+  const favorite = async (id: string) => {
+    await fetch("/api/actions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "favorite", mediaId: id }),
+    });
+    await refresh();
+  };
+  const reference = async (id: string) => {
+    await fetch("/api/actions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "reference", mediaId: id }),
+    });
+    await refresh();
+  };
+  const createFrom = (
+    parent?: MediaAsset,
+    conversationId?: string,
+    characterId?: string,
+    mode?: "image" | "video",
+  ) =>
+    go("create", {
+      parent,
+      conversationId,
+      characterId: characterId ?? parent?.characterId,
+      mode,
+    });
+  const header = (
+    <header className="sticky top-0 z-20 flex items-center justify-between border-b border-white/8 bg-[#08090d]/90 px-5 py-4 backdrop-blur">
+      <button
+        onClick={() => go("home")}
+        className="text-xl font-black tracking-[-.08em]"
+      >
+        flex<span className="text-fuchsia-400">.</span>scenes
+      </button>
+      <div className="flex gap-2">
+        <button
+          aria-label="Messages"
+          onClick={() => go("messages")}
+          className="rounded-full bg-white/7 px-3 py-2 text-sm"
+        >
+          {icon.messages}
+        </button>
+        <button
+          aria-label="Library"
+          onClick={() => go("library")}
+          className="rounded-full bg-white/7 px-3 py-2 text-sm"
+        >
+          {icon.library}
+        </button>
+      </div>
+    </header>
+  );
+  return (
+    <main className="mx-auto min-h-screen max-w-[1680px] bg-[#08090d] pb-20 text-zinc-100 md:grid md:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[220px_minmax(0,1fr)_300px] md:pb-0">
+      <aside className="hidden border-r border-white/8 bg-[#0c0d12] p-5 md:block">
+        <button
+          onClick={() => go("home")}
+          className="mb-9 text-2xl font-black tracking-[-.08em]"
+        >
+          flex<span className="text-fuchsia-400">.</span>scenes
+        </button>
+        {nav.map(([id, label]) => (
+          <NavButton
+            key={id}
+            id={id}
+            label={label}
+            active={view === id}
+            onClick={() => go(id as View)}
+          />
+        ))}
+        <NavButton
+          id="messages"
+          label="Messages"
+          active={view === "messages"}
+          onClick={() => go("messages")}
+        />
+        <NavButton
+          id="library"
+          label="Library"
+          active={view === "library"}
+          onClick={() => go("library")}
+        />
+        <NavButton
+          id="jobs"
+          label="Activity"
+          active={view === "jobs"}
+          onClick={() => go("jobs")}
+        />
+        <NavButton
+          id="collections"
+          label="Collections"
+          active={view === "collections"}
+          onClick={() => go("collections")}
+        />
+        <button
+          onClick={() => go("lab")}
+          className="mt-5 text-xs text-zinc-600 hover:text-fuchsia-300"
+        >
+          Developer Provider Lab
+        </button>
+      </aside>
+      <section className="min-w-0 border-x border-white/5">
+        {header}
+        <div className="mx-auto w-full max-w-[900px] p-4 md:p-7">
+          {view === "home" && (
+            <Home
+              data={data}
+              go={go}
+              select={setSelected}
+              favorite={favorite}
+              reference={reference}
+              create={createFrom}
+              setCharacter={setActiveCharacter}
+            />
+          )}{" "}
+          {view === "explore" && <Explore data={data} select={setSelected} />}{" "}
+          {view === "create" && (
+            <CapabilityCreate
+              data={data}
+              context={createContext}
+              onComplete={async () => {
+                await refresh();
+                go("library");
+              }}
+            />
+          )}{" "}
+          {view === "reels" && (
+            <Reels data={data} select={setSelected} create={createFrom} />
+          )}{" "}
+          {view === "messages" && (
+            <PremiumMessages
+              data={data}
+              create={createFrom}
+              refresh={refresh}
+            />
+          )}{" "}
+          {view === "library" && <Library data={data} select={setSelected} />}{" "}
+          {view === "character" && (
+            <CharacterHub
+              data={data}
+              character={active}
+              select={setSelected}
+              create={createFrom}
+              go={go}
+            />
+          )}{" "}
+          {view === "settings" && (
+            <CharacterSettings
+              data={data}
+              character={active}
+              refresh={refresh}
+              go={go}
+            />
+          )}{" "}
+          {view === "jobs" && (
+            <JobCenter data={data} select={setSelected} refresh={refresh} />
+          )}{" "}
+          {view === "collections" && (
+            <Collections data={data} refresh={refresh} select={setSelected} />
+          )}{" "}
+          {view === "lab" && <ProviderLab data={data} go={go} />}
+        </div>
+      </section>
+      <ContextRail data={data} character={active} view={view} go={go} />
+      <nav className="fixed bottom-0 left-0 right-0 z-30 flex justify-around border-t border-white/10 bg-[#111218]/95 px-2 py-2 backdrop-blur md:hidden">
+        {nav.map(([id, label]) => (
+          <button
+            key={id}
+            onClick={() => go(id as View)}
+            className={`grid place-items-center gap-0.5 rounded-xl px-3 py-1 text-[10px] ${view === id ? "text-fuchsia-300" : "text-zinc-400"}`}
+          >
+            <span
+              className={
+                id === "create"
+                  ? "rounded-full bg-fuchsia-500 px-2 py-0.5 text-base text-white"
+                  : "text-lg"
+              }
+            >
+              {icon[id]}
+            </span>
+            {label}
+          </button>
+        ))}
+      </nav>
+      {selected && (
+        <Detail
+          data={data}
+          asset={selected}
+          character={data.characters.find((c) => c.id === selected.characterId)}
+          close={() => setSelected(null)}
+          favorite={favorite}
+          reference={reference}
+          remix={() => {
+            setSelected(null);
+            createFrom(selected);
+          }}
+          animate={() => {
+            setSelected(null);
+            createFrom(selected, undefined, undefined, "video");
+          }}
+        />
+      )}
+    </main>
+  );
 }
-function ContextRail({data,character,view,go}:{data:AppSnapshot;character?:AppSnapshot["characters"][number];view:View;go:(x:View)=>void}){const latest=data.media.slice(0,4),jobs=data.jobs.filter(j=>!["completed","failed","cancelled"].includes(j.status));return <aside className="hidden border-l border-white/5 bg-[#0a0c10]/70 p-5 xl:block"><div className="sticky top-5 space-y-7"><section><p className="text-[11px] font-bold uppercase tracking-[.18em] text-zinc-500">Current character</p>{character&&<button onClick={()=>go("character")} className="mt-3 flex w-full items-center gap-3 text-left"><img src={character.portraitUrl} alt="" className="h-12 w-12 rounded-full ring-2 ring-fuchsia-400/70 ring-offset-2 ring-offset-[#0a0c10]"/><span><b className="block text-sm">{character.name}</b><small className="text-zinc-500">{character.handle}</small></span></button>}</section><section><div className="flex items-center justify-between"><p className="text-[11px] font-bold uppercase tracking-[.18em] text-zinc-500">Recent scenes</p><button onClick={()=>go("library")} className="text-xs text-fuchsia-300">View all</button></div><div className="mt-3 grid grid-cols-2 gap-2">{latest.map(m=><button key={m.id} onClick={()=>go("library")} className="overflow-hidden rounded-xl"><img src={m.posterUrl??m.url} alt="" className="aspect-square w-full object-cover"/></button>)}</div></section>{jobs.length>0&&<section className="rounded-2xl border border-fuchsia-300/15 bg-fuchsia-500/5 p-3"><p className="text-xs font-bold">Generation in progress</p><p className="mt-1 text-xs text-zinc-400">{jobs[0].status} · keep browsing while it finishes</p><button onClick={()=>go("jobs")} className="mt-3 text-xs text-fuchsia-200">Open activity</button></section>}<section className="rounded-2xl bg-white/[.035] p-4"><p className="text-xs font-bold">{view==="create"?"Draft is saved":"Create a scene"}</p><p className="mt-1 text-xs leading-5 text-zinc-500">Character context, references, and lineage stay private in Flex Scenes.</p><button onClick={()=>go("create")} className="mt-3 rounded-full bg-fuchsia-500 px-3 py-2 text-xs font-bold">New scene</button></section></div></aside>}
-function NavButton({id,label,active,onClick}:{id:string;label:string;active:boolean;onClick:()=>void}){return <button onClick={onClick} className={`mb-2 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm ${active?"bg-fuchsia-500/15 text-fuchsia-200":"text-zinc-400 hover:bg-white/5"}`}><span className="text-lg">{icon[id]}</span>{label}</button>}
-function Home({data,go,select,favorite,reference,create,setCharacter}:{data:AppSnapshot;go:(x:View)=>void;select:(x:MediaAsset)=>void;favorite:(id:string)=>void;reference:(id:string)=>void;create:(x?:MediaAsset)=>void;setCharacter:(id:string)=>void}){return <PremiumHome data={data} select={select} favorite={favorite} reference={reference} create={create} setCharacter={setCharacter}/>}
-function FeedCard({asset,character,select,favorite,reference,create}:{asset:MediaAsset;character:string;select:(x:MediaAsset)=>void;favorite:(id:string)=>void;reference:(id:string)=>void;create:(x?:MediaAsset)=>void}){return <article className="overflow-hidden rounded-3xl border border-white/8 bg-[#13141b]"><div className="flex items-center justify-between px-4 py-3"><button className="font-semibold" onClick={()=>select(asset)}>{character}<span className="ml-2 text-xs font-normal text-zinc-500">{time(asset.createdAt)}</span></button><span className="text-zinc-500">•••</span></div><button onClick={()=>select(asset)} className="relative block w-full"><img src={asset.posterUrl??asset.url} alt={asset.title} className="aspect-[4/5] w-full object-cover"/>{asset.type==="video"&&<span className="absolute inset-0 grid place-items-center text-5xl text-white/90">▶</span>}</button><div className="space-y-3 p-4"><div className="flex items-center gap-3"><button onClick={()=>favorite(asset.id)} className={asset.favorite?"text-fuchsia-300":""}>{icon.heart}</button><button onClick={()=>select(asset)}>{icon.note}</button><button onClick={()=>create(asset)} className="ml-auto rounded-full bg-white/8 px-3 py-1 text-xs">Remix</button><button onClick={()=>reference(asset.id)} className="rounded-full bg-white/8 px-3 py-1 text-xs">Use ref</button></div><p className="text-sm text-zinc-300"><b className="mr-2 text-zinc-100">{character}</b>{asset.caption}</p><p className="text-xs text-zinc-500">{asset.title}</p></div></article>}
-function Explore({data,select}:{data:AppSnapshot;select:(m:MediaAsset)=>void}){const [filter,setFilter]=useState("All");const [search,setSearch]=useState(""); const media=data.media.filter(m=>(filter==="All"||filter==="Favorites"&&m.favorite||filter==="Images"&&m.type==="image"||filter==="Videos"&&m.type==="video"||filter==="Characters")&&(`${m.title} ${m.caption}`.toLowerCase().includes(search.toLowerCase())));return <><h1 className="mb-4 text-3xl font-bold">Explore</h1><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search your private archive" className="mb-4 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 outline-none focus:border-fuchsia-400"/><div className="mb-5 flex gap-2 overflow-x-auto">{["All","Images","Videos","Favorites","Characters"].map(x=><button key={x} onClick={()=>setFilter(x)} className={`rounded-full px-4 py-2 text-sm ${filter===x?"bg-fuchsia-500 text-white":"bg-white/6 text-zinc-400"}`}>{x}</button>)}</div><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{media.map(m=><button key={m.id} onClick={()=>select(m)} className="relative overflow-hidden rounded-2xl bg-[#15161d]"><img src={m.posterUrl??m.url} alt={m.title} className="aspect-square w-full object-cover"/>{m.type==="video"&&<span className="absolute bottom-2 right-2 rounded-full bg-black/60 px-2 py-1 text-xs">▶ Video</span>}</button>)}</div></>}
-function Create({data,context,onComplete}:{data:AppSnapshot;context:{parent?:MediaAsset;conversationId?:string;characterId?:string};onComplete:()=>void}){const [mode,setMode]=useState<"image"|"video">("image");const [characterId,setCharacterId]=useState(context.characterId??data.characters[0]?.id);const [prompt,setPrompt]=useState(context.parent?`Remix: ${context.parent.prompt}`:"");const [ratio,setRatio]=useState("4:5");const [preset,setPreset]=useState("Hero");const [referenceId,setReferenceId]=useState(context.parent?.id??"");const [simulation,setSimulation]=useState<"success"|"failure"|"timeout">("success");const [job,setJob]=useState<GenerationJob|null>(null); const usableReferences=data.media.filter(m=>m.isReference||m.characterId===characterId); const submit=async()=>{const input:GenerationInput={characterId,mode,prompt,aspectRatio:ratio,preset,count:mode==="image"?1:undefined,duration:mode==="video"?5:undefined,simulation,parentMediaId:referenceId||null,conversationId:context.conversationId??null};const created=await json<GenerationJob>(await fetch("/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)}));setJob(created);};useEffect(()=>{if(!job||["completed","failed","cancelled"].includes(job.status))return;const timer=setInterval(async()=>{const next=await json<GenerationJob>(await fetch(`/api/jobs/${job.id}`,{cache:"no-store"}));setJob(next);if(next.status==="completed")setTimeout(onComplete,450);},500);return()=>clearInterval(timer);},[job,onComplete]);return <div className="mx-auto max-w-2xl"><p className="text-xs uppercase tracking-[.2em] text-fuchsia-300">Create</p><h1 className="mb-6 text-3xl font-bold">Direct a new scene</h1>{context.parent&&<div className="mb-5 flex items-center gap-3 rounded-2xl border border-fuchsia-400/30 bg-fuchsia-500/10 p-3"><img src={context.parent.url} className="h-12 w-12 rounded-lg object-cover" alt=""/><span className="text-sm">Remixing <b>{context.parent.title}</b> as a parent reference.</span></div>}<div className="rounded-3xl border border-white/8 bg-[#13141b] p-5"><div className="mb-5 grid grid-cols-2 rounded-2xl bg-black/25 p-1">{(["image","video"] as const).map(x=><button key={x} onClick={()=>setMode(x)} className={`rounded-xl py-3 text-sm font-bold ${mode===x?"bg-fuchsia-500":"text-zinc-400"}`}>{x==="image"?"Image":"Video"}</button>)}</div><label className="label">Character<select value={characterId} onChange={e=>setCharacterId(e.target.value)}>{data.characters.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><label className="label">Reference media<select value={referenceId} onChange={e=>setReferenceId(e.target.value)}><option value="">No reference selected</option>{usableReferences.map(m=><option key={m.id} value={m.id}>{m.isReference?"Reference · ":"Character media · "}{m.title}</option>)}</select></label><p className="-mt-2 mb-4 text-xs text-zinc-500">Mark media as a reference from Library, or select this character&apos;s existing media.</p><label className="label">Scene direction<textarea value={prompt} onChange={e=>setPrompt(e.target.value)} placeholder="Describe light, action, camera, and atmosphere." rows={5}/></label><div className="grid grid-cols-2 gap-3"><label className="label">Aspect ratio<select value={ratio} onChange={e=>setRatio(e.target.value)}><option>4:5</option><option>1:1</option><option>16:9</option><option>9:16</option></select></label><label className="label">{mode==="image"?"Resolution":"Duration"}<select value={preset} onChange={e=>setPreset(e.target.value)}><option value="Hero">{mode==="image"?"Hero 1024":"5 seconds"}</option><option value="Draft">{mode==="image"?"Draft 768":"10 seconds"}</option></select></label></div><details className="mb-5 rounded-xl bg-black/20 p-3 text-sm text-zinc-400"><summary>Advanced mock controls</summary><label className="label mt-3">Deterministic simulation<select value={simulation} onChange={e=>setSimulation(e.target.value as typeof simulation)}><option value="success">Successful generation</option><option value="failure">Provider failure</option><option value="timeout">Provider timeout</option></select></label><p className="mt-2 text-xs">Future: Seedream 5 / Seedance 2.5 — not connected.</p></details>{job?<JobState job={job} onCancel={async()=>setJob(await json<GenerationJob>(await fetch(`/api/jobs/${job.id}`,{method:"POST",headers:{"Content-Type":"application/json"},body:'{"action":"cancel"}'})))} onRetry={async()=>setJob(await json<GenerationJob>(await fetch(`/api/jobs/${job.id}`,{method:"POST",headers:{"Content-Type":"application/json"},body:'{"action":"retry"}'})))} />:<button onClick={submit} disabled={!prompt.trim()} className="w-full rounded-2xl bg-fuchsia-500 py-4 font-bold disabled:opacity-40">Generate mock {mode}</button>}</div></div>}
-function LegacyCapabilityCreate({data,context,onComplete}:{data:AppSnapshot;context:{parent?:MediaAsset;conversationId?:string;characterId?:string;mode?:"image"|"video"};onComplete:()=>void}) {
- const [mode,setMode]=useState<"image"|"video">(context.mode??"image"); const [characterId,setCharacterId]=useState(context.characterId??data.characters[0]?.id); const [prompt,setPrompt]=useState(context.parent&&context.mode!=="video"?`Remix: ${context.parent.prompt}`:""); const [negativePrompt,setNegativePrompt]=useState(""); const [seed,setSeed]=useState(""); const [audio,setAudio]=useState(false); const [ratio,setRatio]=useState("4:5"); const [preset,setPreset]=useState("Hero 1024"); const [duration,setDuration]=useState(5); const [simulation,setSimulation]=useState<"success"|"failure"|"timeout">("success"); const [job,setJob]=useState<GenerationJob|null>(null); const [refs,setRefs]=useState<string[]>(context.parent?[context.parent.id]:[]); const [uploading,setUploading]=useState(false);
- const capabilities=data.capabilities.find(c=>c.mode===mode); const character=data.characters.find(c=>c.id===characterId); const canonical=new Set(data.characterReferences.filter(r=>r.characterId===characterId&&r.canonical&&r.active).map(r=>r.mediaId)); const candidates=data.media.filter(m=>m.isReference||m.characterId===characterId||canonical.has(m.id));
- useEffect(()=>{const timer=setTimeout(()=>{fetch("/api/actions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"draft-save",draft:{id:"current",characterId,mode,payloadJson:JSON.stringify({prompt,negativePrompt,seed,ratio,preset,duration,audio,simulation,referenceAssetIds:refs}),updatedAt:new Date().toISOString()}})}).catch(()=>undefined);},350);return()=>clearTimeout(timer);},[characterId,mode,prompt,negativePrompt,seed,ratio,preset,duration,audio,simulation,refs]);
- const toggle=(id:string)=>setRefs(current=>current.includes(id)?current.filter(x=>x!==id):[...current,id]); const chooseCharacter=(id:string)=>{setCharacterId(id);if(!context.parent)setRefs(data.characterReferences.filter(r=>r.characterId===id&&r.canonical&&r.active).map(r=>r.mediaId));};
- const upload=async(file:File)=>{setUploading(true);try{const form=new FormData();form.set("file",file);form.set("characterId",characterId); const response=await fetch("/api/media/upload",{method:"POST",body:form}); const asset=await json<MediaAsset>(response); setRefs(current=>[...current,asset.id]); window.location.reload();}finally{setUploading(false);}};
- const submit=async()=>{if(!capabilities)return; const input:GenerationInput={characterId,mode,prompt,negativePrompt,seed,aspectRatio:ratio,preset,count:mode==="image"?1:undefined,duration:mode==="video"?duration:undefined,audio:capabilities.audio?audio:undefined,simulation,referenceAssetIds:refs,parentMediaId:context.parent?.id??null,conversationId:context.conversationId??null}; const response=await fetch("/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(input)});setJob(await json<GenerationJob>(response));};
- useEffect(()=>{if(!job||["completed","failed","cancelled"].includes(job.status))return;const timer=setInterval(async()=>{const next=await json<GenerationJob>(await fetch(`/api/jobs/${job.id}`,{cache:"no-store"}));setJob(next);if(next.status==="completed")setTimeout(onComplete,450);},500);return()=>clearInterval(timer);},[job,onComplete]);
- return <div className="mx-auto max-w-2xl"><p className="text-xs uppercase tracking-[.2em] text-fuchsia-300">Create</p><h1 className="mb-2 text-3xl font-bold">Direct a new scene</h1><p className="mb-6 text-sm text-zinc-500">Capability-driven mock workflow · future Seedream 5 / Seedance 2.5 adapters are not connected.</p><div className="rounded-3xl border border-white/8 bg-[#13141b] p-5"><div className="mb-5 grid grid-cols-2 rounded-2xl bg-black/25 p-1">{(["image","video"] as const).map(x=><button key={x} onClick={()=>setMode(x)} className={`rounded-xl py-3 text-sm font-bold ${mode===x?"bg-fuchsia-500":"text-zinc-400"}`}>{x==="image"?"Image · Mock Image Provider":"Video · Mock Video Provider"}</button>)}</div><label className="label">Character<select value={characterId} onChange={e=>setCharacterId(e.target.value)}>{data.characters.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><div className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-3"><div className="mb-2 flex items-center justify-between"><b className="text-sm">Reference tray</b><label className="cursor-pointer rounded-full bg-white/10 px-3 py-1 text-xs">{uploading?"Importing…":"Import local media"}<input type="file" accept="image/*,video/*" className="hidden" onChange={e=>e.target.files?.[0]&&upload(e.target.files[0])}/></label></div><p className="mb-3 text-xs text-zinc-500">Canonical packs, prior scenes, library references, and local imports stay structured—not embedded in a prompt.</p><div className="grid grid-cols-3 gap-2">{candidates.slice(0,12).map(asset=><button type="button" key={asset.id} onClick={()=>toggle(asset.id)} className={`relative overflow-hidden rounded-xl border ${refs.includes(asset.id)?"border-fuchsia-400":"border-transparent"}`}><img src={asset.posterUrl??asset.url} alt={asset.title} className="aspect-square w-full object-cover"/><span className="absolute inset-x-0 bottom-0 bg-black/65 px-1 py-1 text-[9px]">{canonical.has(asset.id)?"Canonical":asset.type==="video"?"Video":"Scene"}</span></button>)}</div>{!candidates.length&&<p className="text-sm text-zinc-500">No reusable media yet. Import a local SFW fixture or create a scene first.</p>}<p className="mt-2 text-xs text-fuchsia-200">{refs.length} structured reference{refs.length===1?"":"s"} selected</p></div><label className="label">Scene direction<textarea value={prompt} onChange={e=>setPrompt(e.target.value)} placeholder="Describe light, action, camera, and atmosphere." rows={5}/></label>{capabilities?.negativePrompt&&<label className="label">Negative direction<textarea value={negativePrompt} onChange={e=>setNegativePrompt(e.target.value)} placeholder="Optional: things to avoid" rows={2}/></label>}<div className="grid grid-cols-2 gap-3"><label className="label">Aspect ratio<select value={ratio} onChange={e=>setRatio(e.target.value)}>{capabilities?.aspectRatios.map(x=><option key={x}>{x}</option>)}</select></label><label className="label">{mode==="image"?"Resolution":"Duration"}<select value={mode==="image"?preset:String(duration)} onChange={e=>mode==="image"?setPreset(e.target.value):setDuration(Number(e.target.value))}>{mode==="image"?capabilities?.resolutions.map(x=><option key={x}>{x}</option>):capabilities?.durations.map(x=><option key={x} value={x}>{x} seconds</option>)}</select></label></div><details className="mb-5 rounded-xl bg-black/20 p-3 text-sm text-zinc-400"><summary>Advanced controls exposed by {capabilities?.label}</summary>{capabilities?.seed&&<label className="label mt-3">Seed<input value={seed} onChange={e=>setSeed(e.target.value)} placeholder="Random if blank"/></label>}{capabilities?.audio&&<label className="mt-3 flex items-center gap-2"><input type="checkbox" checked={audio} onChange={e=>setAudio(e.target.checked)}/> Include mock audio track</label>}<label className="label mt-3">Deterministic simulation<select value={simulation} onChange={e=>setSimulation(e.target.value as typeof simulation)}><option value="success">Successful generation</option><option value="failure">Provider failure</option><option value="timeout">Provider timeout</option></select></label><p className="mt-2 text-xs">Capabilities: {capabilities?.advancedControls.join(" · ")}</p></details>{job?<JobState job={job} onCancel={async()=>setJob(await json<GenerationJob>(await fetch(`/api/jobs/${job.id}`,{method:"POST",headers:{"Content-Type":"application/json"},body:'{"action":"cancel"}'})))} onRetry={async()=>setJob(await json<GenerationJob>(await fetch(`/api/jobs/${job.id}`,{method:"POST",headers:{"Content-Type":"application/json"},body:'{"action":"retry"}'})))} />:<button onClick={submit} disabled={!prompt.trim()} className="w-full rounded-2xl bg-fuchsia-500 py-4 font-bold disabled:opacity-40">Generate mock {mode}</button>}</div></div>
+function ContextRail({
+  data,
+  character,
+  view,
+  go,
+}: {
+  data: AppSnapshot;
+  character?: AppSnapshot["characters"][number];
+  view: View;
+  go: (x: View) => void;
+}) {
+  const latest = data.media.slice(0, 4),
+    jobs = data.jobs.filter(
+      (j) => !["completed", "failed", "cancelled"].includes(j.status),
+    );
+  return (
+    <aside className="hidden border-l border-white/5 bg-[#0a0c10]/70 p-5 xl:block">
+      <div className="sticky top-5 space-y-7">
+        <section>
+          <p className="text-[11px] font-bold uppercase tracking-[.18em] text-zinc-500">
+            Current character
+          </p>
+          {character && (
+            <button
+              onClick={() => go("character")}
+              className="mt-3 flex w-full items-center gap-3 text-left"
+            >
+              <img
+                src={character.portraitUrl}
+                alt=""
+                className="h-12 w-12 rounded-full ring-2 ring-fuchsia-400/70 ring-offset-2 ring-offset-[#0a0c10]"
+              />
+              <span>
+                <b className="block text-sm">{character.name}</b>
+                <small className="text-zinc-500">{character.handle}</small>
+              </span>
+            </button>
+          )}
+        </section>
+        <section>
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-bold uppercase tracking-[.18em] text-zinc-500">
+              Recent scenes
+            </p>
+            <button
+              onClick={() => go("library")}
+              className="text-xs text-fuchsia-300"
+            >
+              View all
+            </button>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            {latest.map((m) => (
+              <button
+                key={m.id}
+                onClick={() => go("library")}
+                className="overflow-hidden rounded-xl"
+              >
+                <img
+                  src={m.posterUrl ?? m.url}
+                  alt=""
+                  className="aspect-square w-full object-cover"
+                />
+              </button>
+            ))}
+          </div>
+        </section>
+        {jobs.length > 0 && (
+          <section className="rounded-2xl border border-fuchsia-300/15 bg-fuchsia-500/5 p-3">
+            <p className="text-xs font-bold">Generation in progress</p>
+            <p className="mt-1 text-xs text-zinc-400">
+              {jobs[0].status} · keep browsing while it finishes
+            </p>
+            <button
+              onClick={() => go("jobs")}
+              className="mt-3 text-xs text-fuchsia-200"
+            >
+              Open activity
+            </button>
+          </section>
+        )}
+        <section className="rounded-2xl bg-white/[.035] p-4">
+          <p className="text-xs font-bold">
+            {view === "create" ? "Draft is saved" : "Create a scene"}
+          </p>
+          <p className="mt-1 text-xs leading-5 text-zinc-500">
+            Character context, references, and lineage stay private in Flex
+            Scenes.
+          </p>
+          <button
+            onClick={() => go("create")}
+            className="mt-3 rounded-full bg-fuchsia-500 px-3 py-2 text-xs font-bold"
+          >
+            New scene
+          </button>
+        </section>
+      </div>
+    </aside>
+  );
 }
-function CapabilityCreate({data,context,onComplete}:{data:AppSnapshot;context:{parent?:MediaAsset;conversationId?:string;characterId?:string;mode?:"image"|"video"};onComplete:()=>void}){return <PremiumCreateStudio data={data} context={context} onComplete={onComplete}/>}
-function JobState({job,onCancel,onRetry}:{job:GenerationJob;onCancel:()=>void;onRetry:()=>void}){return <div className="rounded-2xl border border-fuchsia-400/30 bg-fuchsia-500/10 p-4"><p className="font-bold capitalize">{job.status}</p><p className="mt-1 text-sm text-zinc-300">{job.status==="completed"?"Media is now in Library and Character Hub.":job.error??"Mock provider is moving through its real persisted lifecycle."}</p>{["queued","generating","finalizing"].includes(job.status)&&<button onClick={onCancel} className="mt-3 rounded-full bg-white/10 px-3 py-1 text-xs">Cancel</button>}{job.status==="failed"&&<button onClick={onRetry} className="mt-3 rounded-full bg-white/10 px-3 py-1 text-xs">Retry with success</button>}</div>}
-function Reels({data,select,create}:{data:AppSnapshot;select:(m:MediaAsset)=>void;create:(m:MediaAsset)=>void}){const videos=data.media.filter(m=>m.type==="video");const [index,setIndex]=useState(0);const item=videos[index]??data.media[0];if(!item)return null;return <div className="mx-auto max-w-md"><div className="relative overflow-hidden rounded-3xl border border-white/10 bg-[#12131a]"><img src={item.posterUrl??item.url} alt={item.title} className="aspect-[9/16] w-full object-cover"/><div className="absolute inset-0 grid place-items-center text-6xl text-white/90">▶</div><div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 p-5 pt-24"><p className="font-bold">{data.characters.find(c=>c.id===item.characterId)?.name}</p><p className="mt-1 text-sm text-zinc-200">{item.caption}</p><div className="mt-4 flex gap-2"><button onClick={()=>select(item)} className="rounded-full bg-white/15 px-3 py-2 text-xs">Notes</button><button onClick={()=>select(item)} className="rounded-full bg-white/15 px-3 py-2 text-xs">Use ref</button><button onClick={()=>create(item)} className="rounded-full bg-fuchsia-500 px-3 py-2 text-xs font-bold">Remix</button></div></div></div><div className="mt-4 flex justify-between"><button onClick={()=>setIndex(Math.max(0,index-1))} disabled={!index} className="rounded-full bg-white/8 px-4 py-2 disabled:opacity-30">Previous</button><button onClick={()=>setIndex(Math.min(videos.length-1,index+1))} disabled={index>=videos.length-1} className="rounded-full bg-white/8 px-4 py-2 disabled:opacity-30">Next reel</button></div></div>}
-function EnhancedMessages({data,create,refresh}:{data:AppSnapshot;create:(m?:MediaAsset,conversationId?:string,characterId?:string)=>void;refresh:()=>Promise<void>}){const [active,setActive]=useState(data.conversations[0]?.id);const [text,setText]=useState("");const [attach,setAttach]=useState("");const conv=data.conversations.find(c=>c.id===active);const character=data.characters.find(c=>c.id===conv?.characterId);const messages=data.messages.filter(m=>m.conversationId===active);const memory=data.memory.find(m=>m.conversationId===active);const send=async()=>{if(!text.trim()||!active)return;await fetch("/api/actions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"message",conversationId:active,text,mediaId:attach||undefined})});setText("");setAttach("");await refresh();};return <div className="grid min-h-[600px] overflow-hidden rounded-3xl border border-white/8 bg-[#12131a] md:grid-cols-[290px_1fr]"><aside className="border-r border-white/8 p-3"><h1 className="p-2 text-2xl font-bold">Messages</h1>{data.conversations.map(c=>{const ch=data.characters.find(x=>x.id===c.characterId);return <button key={c.id} onClick={()=>setActive(c.id)} className={`flex w-full gap-3 rounded-2xl p-3 text-left ${active===c.id?"bg-white/8":""}`}><img src={ch?.portraitUrl} className="h-11 w-11 rounded-full" alt=""/><span><b className="block">{ch?.name}</b><small className="text-zinc-500">{c.unread?"New reply":"Character studio"}</small></span></button>})}</aside><section className="flex min-h-[500px] flex-col"><div className="border-b border-white/8 p-4"><b>{character?.name}</b><p className="text-xs text-zinc-500">{memory?.summary||"Deterministic personality-aware mock conversation"}</p></div><div className="flex-1 space-y-3 overflow-auto p-4">{messages.map(m=>{const attached=data.attachments.filter(a=>a.messageId===m.id).map(a=>data.media.find(asset=>asset.id===a.mediaId)).filter(Boolean) as MediaAsset[];return <div key={m.id} className={`max-w-[84%] rounded-2xl px-3 py-2 text-sm ${m.role==="user"?"ml-auto bg-fuchsia-500":"bg-white/8"}`}><p>{m.body}</p>{attached.map(asset=><img key={asset.id} src={asset.posterUrl??asset.url} alt={asset.title} className="mt-2 h-24 w-24 rounded-xl object-cover"/>)}</div>})}</div><div className="border-t border-white/8 p-3"><button onClick={()=>create(undefined,active,character?.id)} className="mb-2 rounded-full bg-white/8 px-3 py-1 text-xs">Create Scene from conversation</button><div className="mb-2 flex gap-2"><select value={attach} onChange={e=>setAttach(e.target.value)} className="min-w-0 flex-1 rounded-xl bg-white/8 px-3 py-2 text-xs"><option value="">Attach Library media (optional)</option>{data.media.slice(0,20).map(asset=><option key={asset.id} value={asset.id}>{asset.title}</option>)}</select></div><div className="flex gap-2"><input value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Message character" className="min-w-0 flex-1 rounded-xl bg-white/8 px-3 py-2 outline-none"/><button onClick={send} className="rounded-xl bg-fuchsia-500 px-4">Send</button></div></div></section></div>}
-function CharacterHub({data,character,select,create,go}:{data:AppSnapshot;character?:AppSnapshot["characters"][number];select:(m:MediaAsset)=>void;create:(m?:MediaAsset,conversationId?:string,characterId?:string)=>void;go:(x:View)=>void}){return <PremiumCharacterHub data={data} character={character} select={select} create={create} go={go}/>}
-function Messages({data,go,create,refresh}:{data:AppSnapshot;go:(x:View)=>void;create:(m?:MediaAsset,conversationId?:string,characterId?:string)=>void;refresh:()=>Promise<void>}){const [active,setActive]=useState(data.conversations[0]?.id);const [text,setText]=useState(""); const conv=data.conversations.find(c=>c.id===active);const character=data.characters.find(c=>c.id===conv?.characterId); const messages=data.messages.filter(m=>m.conversationId===active);const send=async()=>{if(!text.trim()||!active)return;await fetch("/api/actions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"message",conversationId:active,text})});setText("");await refresh();};return <div className="grid min-h-[600px] overflow-hidden rounded-3xl border border-white/8 bg-[#12131a] md:grid-cols-[290px_1fr]"><aside className="border-r border-white/8 p-3"><h1 className="p-2 text-2xl font-bold">Messages</h1>{data.conversations.map(c=>{const ch=data.characters.find(x=>x.id===c.characterId);const last=data.messages.filter(m=>m.conversationId===c.id).at(-1);return <button key={c.id} onClick={()=>setActive(c.id)} className={`flex w-full gap-3 rounded-2xl p-3 text-left ${active===c.id?"bg-white/8":""}`}><img src={ch?.portraitUrl} className="h-11 w-11 rounded-full" alt=""/><span className="min-w-0"><b className="block">{ch?.name}</b><small className="block truncate text-zinc-500">{last?.body}</small></span></button>})}</aside><section className="flex min-h-[500px] flex-col"><div className="border-b border-white/8 p-4"><b>{character?.name}</b><p className="text-xs text-zinc-500">Character conversation · deterministic mock replies</p></div><div className="flex-1 space-y-3 overflow-auto p-4">{messages.map(m=><div key={m.id} className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${m.role==="user"?"ml-auto bg-fuchsia-500":"bg-white/8"}`}>{m.body}</div>)}</div><div className="border-t border-white/8 p-3"><button onClick={()=>create(undefined,active,character?.id)} className="mb-2 rounded-full bg-white/8 px-3 py-1 text-xs">Create Scene from conversation</button><div className="flex gap-2"><input value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="Message character" className="min-w-0 flex-1 rounded-xl bg-white/8 px-3 py-2 outline-none"/><button onClick={send} className="rounded-xl bg-fuchsia-500 px-4">Send</button></div></div></section></div>}
-function Library({data,select}:{data:AppSnapshot;select:(m:MediaAsset)=>void}){const [filter,setFilter]=useState("All");const [search,setSearch]=useState("");const media=data.media.filter(m=>(filter==="All"||filter==="Images"&&m.type==="image"||filter==="Videos"&&m.type==="video"||filter==="Favorites"&&m.favorite||filter==="References"&&m.isReference)&&(`${m.title} ${m.prompt}`.toLowerCase().includes(search.toLowerCase())));return <><h1 className="text-3xl font-bold">Library</h1><p className="mt-1 text-sm text-zinc-500">Private archive · provenance preserved per asset</p><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search title or prompt" className="my-5 w-full rounded-2xl bg-white/6 px-4 py-3 outline-none"/><div className="mb-5 flex gap-2 overflow-x-auto">{["All","Images","Videos","Favorites","References"].map(x=><button onClick={()=>setFilter(x)} key={x} className={`rounded-full px-3 py-2 text-xs ${filter===x?"bg-fuchsia-500":"bg-white/7"}`}>{x}</button>)}</div><div className="grid grid-cols-2 gap-3 sm:grid-cols-3">{media.map(m=><button onClick={()=>select(m)} key={m.id} className="overflow-hidden rounded-2xl border border-white/8 bg-[#14151b] text-left"><img src={m.posterUrl??m.url} className="aspect-square w-full object-cover" alt=""/><div className="p-3"><b className="block truncate text-sm">{m.title}</b><small className="text-zinc-500">{m.providerId} · {time(m.createdAt)}</small></div></button>)}</div></>}
-function CharacterSettings({data,character,refresh,go}:{data:AppSnapshot;character?:AppSnapshot["characters"][number];refresh:()=>Promise<void>;go:(x:View)=>void}){const [form,setForm]=useState(character);const [status,setStatus]=useState("");if(!character||!form)return null;const refs=data.characterReferences.filter(r=>r.characterId===character.id);const assets=data.media.filter(m=>m.characterId===character.id);const update=async()=>{await fetch("/api/actions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"character-update",characterId:character.id,characterPatch:{name:form.name,handle:form.handle,description:form.description,personality:form.personality,identityNotes:form.identityNotes,defaultsJson:form.defaultsJson}})});await refresh();setStatus("Saved");};const add=async(id:string)=>{await fetch("/api/actions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"character-reference-add",characterId:character.id,mediaId:id,role:"face",canonical:true})});await refresh();};return <div className="mx-auto max-w-3xl"><button onClick={()=>go("character")} className="mb-4 text-sm text-fuchsia-300">← Back to Character Hub</button><h1 className="text-3xl font-bold">Character Settings</h1><p className="mb-6 text-sm text-zinc-500">Visual identity and conversational personality remain deliberately separate.</p><div className="grid gap-5 md:grid-cols-2"><section className="rounded-3xl border border-white/8 bg-[#13141b] p-5"><h2 className="mb-4 font-bold">Identity</h2><label className="label">Name<input value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></label><label className="label">Handle<input value={form.handle} onChange={e=>setForm({...form,handle:e.target.value})}/></label><label className="label">Short description<textarea value={form.description} onChange={e=>setForm({...form,description:e.target.value})}/></label><label className="label">Appearance / identity notes<textarea value={form.identityNotes} onChange={e=>setForm({...form,identityNotes:e.target.value})}/></label></section><section className="rounded-3xl border border-white/8 bg-[#13141b] p-5"><h2 className="mb-4 font-bold">Personality</h2><label className="label">Personality and speaking style<textarea value={form.personality} onChange={e=>setForm({...form,personality:e.target.value})}/></label><label className="label">Generation defaults (structured JSON)<textarea value={form.defaultsJson} onChange={e=>setForm({...form,defaultsJson:e.target.value})}/></label><p className="text-xs text-zinc-500">Future fields: lore, relationship context, reusable positive fragments, negative constraints, image/video defaults.</p></section></div><button onClick={update} className="mt-5 rounded-2xl bg-fuchsia-500 px-5 py-3 font-bold">Save Character Settings</button><span className="ml-3 text-sm text-fuchsia-200">{status}</span><section className="mt-7 rounded-3xl border border-white/8 bg-[#13141b] p-5"><h2 className="font-bold">Reference Vault</h2><p className="mb-4 text-sm text-zinc-500">Canonical packs are explicit, ordered, and reusable; removing one never deletes its media source.</p><div className="grid gap-3">{refs.map(r=>{const asset=data.media.find(m=>m.id===r.mediaId);return <div key={`${r.mediaId}-${r.role}`} className="flex items-center gap-3 rounded-2xl bg-white/5 p-2"><img src={asset?.posterUrl??asset?.url} alt="" className="h-12 w-12 rounded-xl object-cover"/><div className="min-w-0 flex-1"><b className="text-sm">{asset?.title}</b><p className="text-xs text-zinc-500">{r.role} · {r.canonical?"canonical":"support"} · priority {r.priority}</p></div><button onClick={async()=>{await fetch("/api/actions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"character-reference-update",characterId:character.id,mediaId:r.mediaId,role:r.role,referencePatch:{canonical:!r.canonical}})});await refresh();}} className="rounded-full bg-white/10 px-3 py-1 text-xs">{r.canonical?"Unmark canonical":"Mark canonical"}</button><button onClick={async()=>{await fetch("/api/actions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"character-reference-remove",characterId:character.id,mediaId:r.mediaId,role:r.role})});await refresh();}} className="text-xs text-zinc-500">Remove</button></div>})}</div><p className="mt-5 text-sm text-zinc-400">Add existing character media</p><div className="mt-2 flex gap-2 overflow-x-auto">{assets.filter(m=>!refs.some(r=>r.mediaId===m.id)).map(asset=><button key={asset.id} onClick={()=>add(asset.id)} className="min-w-20 overflow-hidden rounded-xl"><img src={asset.posterUrl??asset.url} alt={asset.title} className="h-20 w-20 object-cover"/></button>)}</div></section></div>}
-function JobCenter({data,select,refresh}:{data:AppSnapshot;select:(m:MediaAsset)=>void;refresh:()=>Promise<void>}){const [filter,setFilter]=useState("all");const jobs=data.jobs.filter(j=>filter==="all"||j.status===filter);return <div><h1 className="text-3xl font-bold">Activity</h1><p className="mb-5 text-sm text-zinc-500">Persistent normalized jobs · provider events · $0.00 mock usage</p><div className="mb-4 flex flex-wrap gap-2">{["all","queued","generating","finalizing","completed","failed","cancelled"].map(x=><button key={x} onClick={()=>setFilter(x)} className={`rounded-full px-3 py-2 text-xs ${filter===x?"bg-fuchsia-500":"bg-white/8"}`}>{x}</button>)}</div><div className="space-y-3">{jobs.map(job=>{const output=data.media.find(m=>m.id===job.mediaId);const events=data.events.filter(e=>e.jobId===job.id);return <article key={job.id} className="rounded-2xl border border-white/8 bg-[#13141b] p-4"><div className="flex justify-between gap-3"><div><b className="capitalize">{job.mode} · {job.status}</b><p className="text-sm text-zinc-500">{job.providerId} · {job.prompt.slice(0,80)}</p></div><span className="text-xs text-fuchsia-200">$0.00</span></div><p className="mt-2 text-xs text-zinc-500">{events.at(-1)?.message??"Awaiting provider event"}</p><div className="mt-3 flex gap-2">{output&&<button onClick={()=>select(output)} className="rounded-full bg-white/10 px-3 py-1 text-xs">Open result</button>}<button onClick={async()=>{await fetch(`/api/jobs/${job.id}`,{method:"POST",headers:{"Content-Type":"application/json"},body:'{"action":"simulate-callback"}'});await refresh();}} disabled={["completed","failed","cancelled"].includes(job.status)} className="rounded-full bg-white/10 px-3 py-1 text-xs disabled:opacity-30">Simulate callback</button><button onClick={()=>alert(JSON.stringify({job,references:data.jobReferences.filter(r=>r.jobId===job.id)},null,2))} className="rounded-full bg-white/10 px-3 py-1 text-xs">Inspect request</button></div></article>})}</div></div>}
-function Collections({data,refresh,select}:{data:AppSnapshot;refresh:()=>Promise<void>;select:(m:MediaAsset)=>void}){const [name,setName]=useState("");return <div><h1 className="text-3xl font-bold">Collections</h1><div className="my-5 flex gap-2"><input value={name} onChange={e=>setName(e.target.value)} placeholder="New collection" className="min-w-0 flex-1 rounded-xl bg-white/8 px-3 py-2"/><button onClick={async()=>{if(!name.trim())return;await fetch("/api/actions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"collection-create",name})});setName("");await refresh();}} className="rounded-xl bg-fuchsia-500 px-4">Create</button></div><div className="grid gap-4 sm:grid-cols-2">{data.collections.map(c=><section key={c.id} className="rounded-2xl border border-white/8 bg-[#13141b] p-4"><b>{c.name}</b><p className="mb-3 text-xs text-zinc-500">{c.mediaIds.length} media assets</p><div className="flex gap-2 overflow-x-auto">{c.mediaIds.map(id=>{const asset=data.media.find(m=>m.id===id);return asset&&<button onClick={()=>select(asset)} key={id}><img src={asset.posterUrl??asset.url} className="h-16 w-16 rounded-lg object-cover" alt=""/></button>})}</div></section>)}</div></div>}
-function ProviderLab({data,go}:{data:AppSnapshot;go:(x:View)=>void}){const [preview,setPreview]=useState<unknown>(null);const test=async()=>setPreview(await json(await fetch("/api/provider-preview",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({family:"seedance-2.5",mode:"reference",prompt:"Dry-run only",references:[{id:"opening",url:"/fixture/opening.png",kind:"image",role:"opening-frame"},{id:"motion",url:"/fixture/motion.mp4",kind:"video",role:"motion"},{id:"audio",url:"/fixture/audio.mp3",kind:"audio",role:"audio-mood"}],duration:5,resolution:"720p",aspectRatio:"16:9"})})));return <div className="mx-auto max-w-2xl rounded-3xl border border-amber-300/20 bg-amber-300/5 p-6"><p className="text-xs uppercase tracking-[.2em] text-amber-200">Development only · dry run</p><h1 className="mt-2 text-3xl font-bold">Provider Contract Lab</h1><p className="mt-3 text-zinc-400">No external provider is contacted. Compare normalized capabilities, preview sanitized routes/payloads, and use mocks for queue, failures, cancellation, retry, and callback completion.</p><div className="mt-5 grid gap-3 sm:grid-cols-2">{data.capabilities.map(c=><div key={c.providerId} className="rounded-2xl bg-black/25 p-4"><b>{c.label}</b><p className="mt-2 text-sm text-zinc-500">{c.advancedControls.join(" · ")}</p></div>)}</div><div className="mt-5 rounded-2xl border border-white/10 bg-black/25 p-4"><b>Live deployment comparison</b><p className="mt-1 text-sm text-zinc-500">HotAPI reference routing is image/audio only; MuAPI Omni accepts image, video, and audio references. Both remain Not connected.</p><button onClick={test} className="mt-3 rounded-xl bg-white/10 px-3 py-2 text-sm">Preview Live Request</button>{preview&&<pre className="mt-3 max-h-72 overflow-auto rounded-xl bg-black/40 p-3 text-xs text-fuchsia-100">{JSON.stringify(preview,null,2)}</pre>}</div><button onClick={()=>go("create")} className="mt-6 rounded-2xl bg-fuchsia-500 px-4 py-3 font-bold">Open Create Lab</button></div>}
-function Detail({data,asset,character,close,favorite,reference,remix,animate}:{data:AppSnapshot;asset:MediaAsset;character?:AppSnapshot["characters"][number];close:()=>void;favorite:(id:string)=>void;reference:(id:string)=>void;remix:()=>void;animate:()=>void}){const [note,setNote]=useState("");const save=async()=>{await fetch("/api/actions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"note",mediaId:asset.id,note})});};const job=data.jobs.find(j=>j.mediaId===asset.id);const lineage=job?data.jobReferences.filter(r=>r.jobId===job.id).map(r=>({role:r.role,asset:data.media.find(m=>m.id===r.mediaId)})):[];const children=data.media.filter(m=>m.parentId===asset.id);return <div className="fixed inset-0 z-50 grid place-items-end bg-black/70 p-0 backdrop-blur-sm md:place-items-center md:p-6"><section className="max-h-[94vh] w-full max-w-3xl overflow-auto rounded-t-3xl bg-[#171820] p-5 md:rounded-3xl"><div className="mb-4 flex justify-between"><div><p className="font-bold">{asset.title}</p><p className="text-sm text-zinc-500">{character?.name} · {asset.providerId}</p></div><button onClick={close} className="rounded-full bg-white/8 px-3">×</button></div><img src={asset.posterUrl??asset.url} className="mx-auto max-h-[62vh] w-full rounded-2xl object-contain" alt={asset.title}/><p className="mt-4 text-sm text-zinc-300">{asset.caption}</p><p className="mt-2 rounded-xl bg-black/20 p-3 text-xs text-zinc-400">Prompt: {asset.prompt}</p>{job&&<section className="mt-3 rounded-2xl border border-white/8 bg-black/20 p-3"><p className="text-xs font-bold uppercase tracking-[.14em] text-fuchsia-200">Lineage</p><p className="mt-1 text-xs text-zinc-400">{asset.parentId?"Parent attached":"Original"} ↓ Current asset ↓ {children.length} child remix{children.length===1?"":"es"}</p><p className="mt-1 text-xs text-zinc-400">{job.providerId} · {job.mode} · {lineage.length} structured reference{lineage.length===1?"":"s"}</p>{lineage.length>0&&<div className="mt-2 flex gap-2 overflow-x-auto">{lineage.map(item=>item.asset&&<div key={`${item.role}-${item.asset.id}`} className="min-w-20"><img src={item.asset.posterUrl??item.asset.url} alt="" className="h-14 w-14 rounded-lg object-cover"/><p className="mt-1 text-[10px] text-zinc-500">{item.role}</p></div>)}</div>}</section>}<div className="mt-4 flex flex-wrap gap-2"><button onClick={()=>favorite(asset.id)} className="rounded-full bg-white/8 px-3 py-2 text-sm">{asset.favorite?"Unfavorite":"Favorite"}</button><button onClick={()=>reference(asset.id)} className="rounded-full bg-white/8 px-3 py-2 text-sm">Use as Reference</button><button onClick={remix} className="rounded-full bg-white/8 px-3 py-2 text-sm">Remix</button>{asset.type==="image"&&<button onClick={animate} className="rounded-full bg-fuchsia-500 px-3 py-2 text-sm font-bold">Animate</button>}</div><div className="mt-4 flex gap-2"><input value={note} onChange={e=>setNote(e.target.value)} placeholder="Private production note" className="min-w-0 flex-1 rounded-xl bg-white/7 px-3 py-2"/><button onClick={save} className="rounded-xl bg-white/10 px-3">Save</button></div></section></div>}
+function NavButton({
+  id,
+  label,
+  active,
+  onClick,
+}: {
+  id: string;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`mb-2 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm ${active ? "bg-fuchsia-500/15 text-fuchsia-200" : "text-zinc-400 hover:bg-white/5"}`}
+    >
+      <span className="text-lg">{icon[id]}</span>
+      {label}
+    </button>
+  );
+}
+function Home({
+  data,
+  go,
+  select,
+  favorite,
+  reference,
+  create,
+  setCharacter,
+}: {
+  data: AppSnapshot;
+  go: (x: View) => void;
+  select: (x: MediaAsset) => void;
+  favorite: (id: string) => void;
+  reference: (id: string) => void;
+  create: (x?: MediaAsset) => void;
+  setCharacter: (id: string) => void;
+}) {
+  return (
+    <PremiumHome
+      data={data}
+      select={select}
+      favorite={favorite}
+      reference={reference}
+      create={create}
+      setCharacter={setCharacter}
+    />
+  );
+}
+function FeedCard({
+  asset,
+  character,
+  select,
+  favorite,
+  reference,
+  create,
+}: {
+  asset: MediaAsset;
+  character: string;
+  select: (x: MediaAsset) => void;
+  favorite: (id: string) => void;
+  reference: (id: string) => void;
+  create: (x?: MediaAsset) => void;
+}) {
+  return (
+    <article className="overflow-hidden rounded-3xl border border-white/8 bg-[#13141b]">
+      <div className="flex items-center justify-between px-4 py-3">
+        <button className="font-semibold" onClick={() => select(asset)}>
+          {character}
+          <span className="ml-2 text-xs font-normal text-zinc-500">
+            {time(asset.createdAt)}
+          </span>
+        </button>
+        <span className="text-zinc-500">•••</span>
+      </div>
+      <button onClick={() => select(asset)} className="relative block w-full">
+        <img
+          src={asset.posterUrl ?? asset.url}
+          alt={asset.title}
+          className="aspect-[4/5] w-full object-cover"
+        />
+        {asset.type === "video" && (
+          <span className="absolute inset-0 grid place-items-center text-5xl text-white/90">
+            ▶
+          </span>
+        )}
+      </button>
+      <div className="space-y-3 p-4">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => favorite(asset.id)}
+            className={asset.favorite ? "text-fuchsia-300" : ""}
+          >
+            {icon.heart}
+          </button>
+          <button onClick={() => select(asset)}>{icon.note}</button>
+          <button
+            onClick={() => create(asset)}
+            className="ml-auto rounded-full bg-white/8 px-3 py-1 text-xs"
+          >
+            Remix
+          </button>
+          <button
+            onClick={() => reference(asset.id)}
+            className="rounded-full bg-white/8 px-3 py-1 text-xs"
+          >
+            Use ref
+          </button>
+        </div>
+        <p className="text-sm text-zinc-300">
+          <b className="mr-2 text-zinc-100">{character}</b>
+          {asset.caption}
+        </p>
+        <p className="text-xs text-zinc-500">{asset.title}</p>
+      </div>
+    </article>
+  );
+}
+function Explore({
+  data,
+  select,
+}: {
+  data: AppSnapshot;
+  select: (m: MediaAsset) => void;
+}) {
+  const [filter, setFilter] = useState("All");
+  const [search, setSearch] = useState("");
+  const media = data.media.filter(
+    (m) =>
+      (filter === "All" ||
+        (filter === "Favorites" && m.favorite) ||
+        (filter === "Images" && m.type === "image") ||
+        (filter === "Videos" && m.type === "video") ||
+        filter === "Characters") &&
+      `${m.title} ${m.caption}`.toLowerCase().includes(search.toLowerCase()),
+  );
+  return (
+    <>
+      <h1 className="mb-4 text-3xl font-bold">Explore</h1>
+      <input
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Search your private archive"
+        className="mb-4 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 outline-none focus:border-fuchsia-400"
+      />
+      <div className="mb-5 flex gap-2 overflow-x-auto">
+        {["All", "Images", "Videos", "Favorites", "Characters"].map((x) => (
+          <button
+            key={x}
+            onClick={() => setFilter(x)}
+            className={`rounded-full px-4 py-2 text-sm ${filter === x ? "bg-fuchsia-500 text-white" : "bg-white/6 text-zinc-400"}`}
+          >
+            {x}
+          </button>
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {media.map((m) => (
+          <button
+            key={m.id}
+            onClick={() => select(m)}
+            className="relative overflow-hidden rounded-2xl bg-[#15161d]"
+          >
+            <img
+              src={m.posterUrl ?? m.url}
+              alt={m.title}
+              className="aspect-square w-full object-cover"
+            />
+            {m.type === "video" && (
+              <span className="absolute bottom-2 right-2 rounded-full bg-black/60 px-2 py-1 text-xs">
+                ▶ Video
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
+function Create({
+  data,
+  context,
+  onComplete,
+}: {
+  data: AppSnapshot;
+  context: {
+    parent?: MediaAsset;
+    conversationId?: string;
+    characterId?: string;
+  };
+  onComplete: () => void;
+}) {
+  const [mode, setMode] = useState<"image" | "video">("image");
+  const [characterId, setCharacterId] = useState(
+    context.characterId ?? data.characters[0]?.id,
+  );
+  const [prompt, setPrompt] = useState(
+    context.parent ? `Remix: ${context.parent.prompt}` : "",
+  );
+  const [ratio, setRatio] = useState("4:5");
+  const [preset, setPreset] = useState("Hero");
+  const [referenceId, setReferenceId] = useState(context.parent?.id ?? "");
+  const [simulation, setSimulation] = useState<
+    "success" | "failure" | "timeout"
+  >("success");
+  const [job, setJob] = useState<GenerationJob | null>(null);
+  const usableReferences = data.media.filter(
+    (m) => m.isReference || m.characterId === characterId,
+  );
+  const submit = async () => {
+    const input: GenerationInput = {
+      characterId,
+      mode,
+      prompt,
+      aspectRatio: ratio,
+      preset,
+      count: mode === "image" ? 1 : undefined,
+      duration: mode === "video" ? 5 : undefined,
+      simulation,
+      parentMediaId: referenceId || null,
+      conversationId: context.conversationId ?? null,
+    };
+    const created = await json<GenerationJob>(
+      await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      }),
+    );
+    setJob(created);
+  };
+  useEffect(() => {
+    if (!job || ["completed", "failed", "cancelled"].includes(job.status))
+      return;
+    const timer = setInterval(async () => {
+      const next = await json<GenerationJob>(
+        await fetch(`/api/jobs/${job.id}`, { cache: "no-store" }),
+      );
+      setJob(next);
+      if (next.status === "completed") setTimeout(onComplete, 450);
+    }, 500);
+    return () => clearInterval(timer);
+  }, [job, onComplete]);
+  return (
+    <div className="mx-auto max-w-2xl">
+      <p className="text-xs uppercase tracking-[.2em] text-fuchsia-300">
+        Create
+      </p>
+      <h1 className="mb-6 text-3xl font-bold">Direct a new scene</h1>
+      {context.parent && (
+        <div className="mb-5 flex items-center gap-3 rounded-2xl border border-fuchsia-400/30 bg-fuchsia-500/10 p-3">
+          <img
+            src={context.parent.url}
+            className="h-12 w-12 rounded-lg object-cover"
+            alt=""
+          />
+          <span className="text-sm">
+            Remixing <b>{context.parent.title}</b> as a parent reference.
+          </span>
+        </div>
+      )}
+      <div className="rounded-3xl border border-white/8 bg-[#13141b] p-5">
+        <div className="mb-5 grid grid-cols-2 rounded-2xl bg-black/25 p-1">
+          {(["image", "video"] as const).map((x) => (
+            <button
+              key={x}
+              onClick={() => setMode(x)}
+              className={`rounded-xl py-3 text-sm font-bold ${mode === x ? "bg-fuchsia-500" : "text-zinc-400"}`}
+            >
+              {x === "image" ? "Image" : "Video"}
+            </button>
+          ))}
+        </div>
+        <label className="label">
+          Character
+          <select
+            value={characterId}
+            onChange={(e) => setCharacterId(e.target.value)}
+          >
+            {data.characters.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="label">
+          Reference media
+          <select
+            value={referenceId}
+            onChange={(e) => setReferenceId(e.target.value)}
+          >
+            <option value="">No reference selected</option>
+            {usableReferences.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.isReference ? "Reference · " : "Character media · "}
+                {m.title}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="-mt-2 mb-4 text-xs text-zinc-500">
+          Mark media as a reference from Library, or select this
+          character&apos;s existing media.
+        </p>
+        <label className="label">
+          Scene direction
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder="Describe light, action, camera, and atmosphere."
+            rows={5}
+          />
+        </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="label">
+            Aspect ratio
+            <select value={ratio} onChange={(e) => setRatio(e.target.value)}>
+              <option>4:5</option>
+              <option>1:1</option>
+              <option>16:9</option>
+              <option>9:16</option>
+            </select>
+          </label>
+          <label className="label">
+            {mode === "image" ? "Resolution" : "Duration"}
+            <select value={preset} onChange={(e) => setPreset(e.target.value)}>
+              <option value="Hero">
+                {mode === "image" ? "Hero 1024" : "5 seconds"}
+              </option>
+              <option value="Draft">
+                {mode === "image" ? "Draft 768" : "10 seconds"}
+              </option>
+            </select>
+          </label>
+        </div>
+        <details className="mb-5 rounded-xl bg-black/20 p-3 text-sm text-zinc-400">
+          <summary>Advanced mock controls</summary>
+          <label className="label mt-3">
+            Deterministic simulation
+            <select
+              value={simulation}
+              onChange={(e) =>
+                setSimulation(e.target.value as typeof simulation)
+              }
+            >
+              <option value="success">Successful generation</option>
+              <option value="failure">Provider failure</option>
+              <option value="timeout">Provider timeout</option>
+            </select>
+          </label>
+          <p className="mt-2 text-xs">
+            Future: Seedream 5 / Seedance 2.5 — not connected.
+          </p>
+        </details>
+        {job ? (
+          <JobState
+            job={job}
+            onCancel={async () =>
+              setJob(
+                await json<GenerationJob>(
+                  await fetch(`/api/jobs/${job.id}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: '{"action":"cancel"}',
+                  }),
+                ),
+              )
+            }
+            onRetry={async () =>
+              setJob(
+                await json<GenerationJob>(
+                  await fetch(`/api/jobs/${job.id}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: '{"action":"retry"}',
+                  }),
+                ),
+              )
+            }
+          />
+        ) : (
+          <button
+            onClick={submit}
+            disabled={!prompt.trim()}
+            className="w-full rounded-2xl bg-fuchsia-500 py-4 font-bold disabled:opacity-40"
+          >
+            Generate mock {mode}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+function LegacyCapabilityCreate({
+  data,
+  context,
+  onComplete,
+}: {
+  data: AppSnapshot;
+  context: {
+    parent?: MediaAsset;
+    conversationId?: string;
+    characterId?: string;
+    mode?: "image" | "video";
+  };
+  onComplete: () => void;
+}) {
+  const [mode, setMode] = useState<"image" | "video">(context.mode ?? "image");
+  const [characterId, setCharacterId] = useState(
+    context.characterId ?? data.characters[0]?.id,
+  );
+  const [prompt, setPrompt] = useState(
+    context.parent && context.mode !== "video"
+      ? `Remix: ${context.parent.prompt}`
+      : "",
+  );
+  const [negativePrompt, setNegativePrompt] = useState("");
+  const [seed, setSeed] = useState("");
+  const [audio, setAudio] = useState(false);
+  const [ratio, setRatio] = useState("4:5");
+  const [preset, setPreset] = useState("Hero 1024");
+  const [duration, setDuration] = useState(5);
+  const [simulation, setSimulation] = useState<
+    "success" | "failure" | "timeout"
+  >("success");
+  const [job, setJob] = useState<GenerationJob | null>(null);
+  const [refs, setRefs] = useState<string[]>(
+    context.parent ? [context.parent.id] : [],
+  );
+  const [uploading, setUploading] = useState(false);
+  const capabilities = data.capabilities.find((c) => c.mode === mode);
+  const character = data.characters.find((c) => c.id === characterId);
+  const canonical = new Set(
+    data.characterReferences
+      .filter((r) => r.characterId === characterId && r.canonical && r.active)
+      .map((r) => r.mediaId),
+  );
+  const candidates = data.media.filter(
+    (m) =>
+      m.isReference || m.characterId === characterId || canonical.has(m.id),
+  );
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetch("/api/actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "draft-save",
+          draft: {
+            id: "current",
+            characterId,
+            mode,
+            payloadJson: JSON.stringify({
+              prompt,
+              negativePrompt,
+              seed,
+              ratio,
+              preset,
+              duration,
+              audio,
+              simulation,
+              referenceAssetIds: refs,
+            }),
+            updatedAt: new Date().toISOString(),
+          },
+        }),
+      }).catch(() => undefined);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [
+    characterId,
+    mode,
+    prompt,
+    negativePrompt,
+    seed,
+    ratio,
+    preset,
+    duration,
+    audio,
+    simulation,
+    refs,
+  ]);
+  const toggle = (id: string) =>
+    setRefs((current) =>
+      current.includes(id) ? current.filter((x) => x !== id) : [...current, id],
+    );
+  const chooseCharacter = (id: string) => {
+    setCharacterId(id);
+    if (!context.parent)
+      setRefs(
+        data.characterReferences
+          .filter((r) => r.characterId === id && r.canonical && r.active)
+          .map((r) => r.mediaId),
+      );
+  };
+  const upload = async (file: File) => {
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.set("file", file);
+      form.set("characterId", characterId);
+      const response = await fetch("/api/media/upload", {
+        method: "POST",
+        body: form,
+      });
+      const asset = await json<MediaAsset>(response);
+      setRefs((current) => [...current, asset.id]);
+      window.location.reload();
+    } finally {
+      setUploading(false);
+    }
+  };
+  const submit = async () => {
+    if (!capabilities) return;
+    const input: GenerationInput = {
+      characterId,
+      mode,
+      prompt,
+      negativePrompt,
+      seed,
+      aspectRatio: ratio,
+      preset,
+      count: mode === "image" ? 1 : undefined,
+      duration: mode === "video" ? duration : undefined,
+      audio: capabilities.audio ? audio : undefined,
+      simulation,
+      referenceAssetIds: refs,
+      parentMediaId: context.parent?.id ?? null,
+      conversationId: context.conversationId ?? null,
+    };
+    const response = await fetch("/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    setJob(await json<GenerationJob>(response));
+  };
+  useEffect(() => {
+    if (!job || ["completed", "failed", "cancelled"].includes(job.status))
+      return;
+    const timer = setInterval(async () => {
+      const next = await json<GenerationJob>(
+        await fetch(`/api/jobs/${job.id}`, { cache: "no-store" }),
+      );
+      setJob(next);
+      if (next.status === "completed") setTimeout(onComplete, 450);
+    }, 500);
+    return () => clearInterval(timer);
+  }, [job, onComplete]);
+  return (
+    <div className="mx-auto max-w-2xl">
+      <p className="text-xs uppercase tracking-[.2em] text-fuchsia-300">
+        Create
+      </p>
+      <h1 className="mb-2 text-3xl font-bold">Direct a new scene</h1>
+      <p className="mb-6 text-sm text-zinc-500">
+        Capability-driven mock workflow · future Seedream 5 / Seedance 2.5
+        adapters are not connected.
+      </p>
+      <div className="rounded-3xl border border-white/8 bg-[#13141b] p-5">
+        <div className="mb-5 grid grid-cols-2 rounded-2xl bg-black/25 p-1">
+          {(["image", "video"] as const).map((x) => (
+            <button
+              key={x}
+              onClick={() => setMode(x)}
+              className={`rounded-xl py-3 text-sm font-bold ${mode === x ? "bg-fuchsia-500" : "text-zinc-400"}`}
+            >
+              {x === "image"
+                ? "Image · Mock Image Provider"
+                : "Video · Mock Video Provider"}
+            </button>
+          ))}
+        </div>
+        <label className="label">
+          Character
+          <select
+            value={characterId}
+            onChange={(e) => setCharacterId(e.target.value)}
+          >
+            {data.characters.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <b className="text-sm">Reference tray</b>
+            <label className="cursor-pointer rounded-full bg-white/10 px-3 py-1 text-xs">
+              {uploading ? "Importing…" : "Import local media"}
+              <input
+                type="file"
+                accept="image/*,video/*"
+                className="hidden"
+                onChange={(e) =>
+                  e.target.files?.[0] && upload(e.target.files[0])
+                }
+              />
+            </label>
+          </div>
+          <p className="mb-3 text-xs text-zinc-500">
+            Canonical packs, prior scenes, library references, and local imports
+            stay structured—not embedded in a prompt.
+          </p>
+          <div className="grid grid-cols-3 gap-2">
+            {candidates.slice(0, 12).map((asset) => (
+              <button
+                type="button"
+                key={asset.id}
+                onClick={() => toggle(asset.id)}
+                className={`relative overflow-hidden rounded-xl border ${refs.includes(asset.id) ? "border-fuchsia-400" : "border-transparent"}`}
+              >
+                <img
+                  src={asset.posterUrl ?? asset.url}
+                  alt={asset.title}
+                  className="aspect-square w-full object-cover"
+                />
+                <span className="absolute inset-x-0 bottom-0 bg-black/65 px-1 py-1 text-[9px]">
+                  {canonical.has(asset.id)
+                    ? "Canonical"
+                    : asset.type === "video"
+                      ? "Video"
+                      : "Scene"}
+                </span>
+              </button>
+            ))}
+          </div>
+          {!candidates.length && (
+            <p className="text-sm text-zinc-500">
+              No reusable media yet. Import a local SFW fixture or create a
+              scene first.
+            </p>
+          )}
+          <p className="mt-2 text-xs text-fuchsia-200">
+            {refs.length} structured reference{refs.length === 1 ? "" : "s"}{" "}
+            selected
+          </p>
+        </div>
+        <label className="label">
+          Scene direction
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder="Describe light, action, camera, and atmosphere."
+            rows={5}
+          />
+        </label>
+        {capabilities?.negativePrompt && (
+          <label className="label">
+            Negative direction
+            <textarea
+              value={negativePrompt}
+              onChange={(e) => setNegativePrompt(e.target.value)}
+              placeholder="Optional: things to avoid"
+              rows={2}
+            />
+          </label>
+        )}
+        <div className="grid grid-cols-2 gap-3">
+          <label className="label">
+            Aspect ratio
+            <select value={ratio} onChange={(e) => setRatio(e.target.value)}>
+              {capabilities?.aspectRatios.map((x) => (
+                <option key={x}>{x}</option>
+              ))}
+            </select>
+          </label>
+          <label className="label">
+            {mode === "image" ? "Resolution" : "Duration"}
+            <select
+              value={mode === "image" ? preset : String(duration)}
+              onChange={(e) =>
+                mode === "image"
+                  ? setPreset(e.target.value)
+                  : setDuration(Number(e.target.value))
+              }
+            >
+              {mode === "image"
+                ? capabilities?.resolutions.map((x) => (
+                    <option key={x}>{x}</option>
+                  ))
+                : capabilities?.durations.map((x) => (
+                    <option key={x} value={x}>
+                      {x} seconds
+                    </option>
+                  ))}
+            </select>
+          </label>
+        </div>
+        <details className="mb-5 rounded-xl bg-black/20 p-3 text-sm text-zinc-400">
+          <summary>Advanced controls exposed by {capabilities?.label}</summary>
+          {capabilities?.seed && (
+            <label className="label mt-3">
+              Seed
+              <input
+                value={seed}
+                onChange={(e) => setSeed(e.target.value)}
+                placeholder="Random if blank"
+              />
+            </label>
+          )}
+          {capabilities?.audio && (
+            <label className="mt-3 flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={audio}
+                onChange={(e) => setAudio(e.target.checked)}
+              />{" "}
+              Include mock audio track
+            </label>
+          )}
+          <label className="label mt-3">
+            Deterministic simulation
+            <select
+              value={simulation}
+              onChange={(e) =>
+                setSimulation(e.target.value as typeof simulation)
+              }
+            >
+              <option value="success">Successful generation</option>
+              <option value="failure">Provider failure</option>
+              <option value="timeout">Provider timeout</option>
+            </select>
+          </label>
+          <p className="mt-2 text-xs">
+            Capabilities: {capabilities?.advancedControls.join(" · ")}
+          </p>
+        </details>
+        {job ? (
+          <JobState
+            job={job}
+            onCancel={async () =>
+              setJob(
+                await json<GenerationJob>(
+                  await fetch(`/api/jobs/${job.id}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: '{"action":"cancel"}',
+                  }),
+                ),
+              )
+            }
+            onRetry={async () =>
+              setJob(
+                await json<GenerationJob>(
+                  await fetch(`/api/jobs/${job.id}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: '{"action":"retry"}',
+                  }),
+                ),
+              )
+            }
+          />
+        ) : (
+          <button
+            onClick={submit}
+            disabled={!prompt.trim()}
+            className="w-full rounded-2xl bg-fuchsia-500 py-4 font-bold disabled:opacity-40"
+          >
+            Generate mock {mode}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+function CapabilityCreate({
+  data,
+  context,
+  onComplete,
+}: {
+  data: AppSnapshot;
+  context: {
+    parent?: MediaAsset;
+    conversationId?: string;
+    characterId?: string;
+    mode?: "image" | "video";
+  };
+  onComplete: () => void;
+}) {
+  return (
+    <PremiumCreateStudio
+      data={data}
+      context={context}
+      onComplete={onComplete}
+    />
+  );
+}
+function JobState({
+  job,
+  onCancel,
+  onRetry,
+}: {
+  job: GenerationJob;
+  onCancel: () => void;
+  onRetry: () => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-fuchsia-400/30 bg-fuchsia-500/10 p-4">
+      <p className="font-bold capitalize">{job.status}</p>
+      <p className="mt-1 text-sm text-zinc-300">
+        {job.status === "completed"
+          ? "Media is now in Library and Character Hub."
+          : (job.error ??
+            "Mock provider is moving through its real persisted lifecycle.")}
+      </p>
+      {["queued", "generating", "finalizing"].includes(job.status) && (
+        <button
+          onClick={onCancel}
+          className="mt-3 rounded-full bg-white/10 px-3 py-1 text-xs"
+        >
+          Cancel
+        </button>
+      )}
+      {job.status === "failed" && (
+        <button
+          onClick={onRetry}
+          className="mt-3 rounded-full bg-white/10 px-3 py-1 text-xs"
+        >
+          Retry with success
+        </button>
+      )}
+    </div>
+  );
+}
+function Reels({
+  data,
+  select,
+  create,
+}: {
+  data: AppSnapshot;
+  select: (m: MediaAsset) => void;
+  create: (m: MediaAsset) => void;
+}) {
+  const videos = data.media.filter((m) => m.type === "video");
+  const [index, setIndex] = useState(0);
+  const item = videos[index] ?? data.media[0];
+  if (!item) return null;
+  return (
+    <div className="mx-auto max-w-md">
+      <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-[#12131a]">
+        <img
+          src={item.posterUrl ?? item.url}
+          alt={item.title}
+          className="aspect-[9/16] w-full object-cover"
+        />
+        <div className="absolute inset-0 grid place-items-center text-6xl text-white/90">
+          ▶
+        </div>
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 p-5 pt-24">
+          <p className="font-bold">
+            {data.characters.find((c) => c.id === item.characterId)?.name}
+          </p>
+          <p className="mt-1 text-sm text-zinc-200">{item.caption}</p>
+          <div className="mt-4 flex gap-2">
+            <button
+              onClick={() => select(item)}
+              className="rounded-full bg-white/15 px-3 py-2 text-xs"
+            >
+              Notes
+            </button>
+            <button
+              onClick={() => select(item)}
+              className="rounded-full bg-white/15 px-3 py-2 text-xs"
+            >
+              Use ref
+            </button>
+            <button
+              onClick={() => create(item)}
+              className="rounded-full bg-fuchsia-500 px-3 py-2 text-xs font-bold"
+            >
+              Remix
+            </button>
+          </div>
+        </div>
+      </div>
+      <div className="mt-4 flex justify-between">
+        <button
+          onClick={() => setIndex(Math.max(0, index - 1))}
+          disabled={!index}
+          className="rounded-full bg-white/8 px-4 py-2 disabled:opacity-30"
+        >
+          Previous
+        </button>
+        <button
+          onClick={() => setIndex(Math.min(videos.length - 1, index + 1))}
+          disabled={index >= videos.length - 1}
+          className="rounded-full bg-white/8 px-4 py-2 disabled:opacity-30"
+        >
+          Next reel
+        </button>
+      </div>
+    </div>
+  );
+}
+function LegacyEnhancedMessages({
+  data,
+  create,
+  refresh,
+}: {
+  data: AppSnapshot;
+  create: (
+    m?: MediaAsset,
+    conversationId?: string,
+    characterId?: string,
+  ) => void;
+  refresh: () => Promise<void>;
+}) {
+  const [active, setActive] = useState(data.conversations[0]?.id);
+  const [text, setText] = useState("");
+  const [attach, setAttach] = useState("");
+  const conv = data.conversations.find((c) => c.id === active);
+  const character = data.characters.find((c) => c.id === conv?.characterId);
+  const messages = data.messages.filter((m) => m.conversationId === active);
+  const memory = data.memory.find((m) => m.conversationId === active);
+  const send = async () => {
+    if (!text.trim() || !active) return;
+    await fetch("/api/actions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "message",
+        conversationId: active,
+        text,
+        mediaId: attach || undefined,
+      }),
+    });
+    setText("");
+    setAttach("");
+    await refresh();
+  };
+  return (
+    <div className="grid min-h-[600px] overflow-hidden rounded-3xl border border-white/8 bg-[#12131a] md:grid-cols-[290px_1fr]">
+      <aside className="border-r border-white/8 p-3">
+        <h1 className="p-2 text-2xl font-bold">Messages</h1>
+        {data.conversations.map((c) => {
+          const ch = data.characters.find((x) => x.id === c.characterId);
+          return (
+            <button
+              key={c.id}
+              onClick={() => setActive(c.id)}
+              className={`flex w-full gap-3 rounded-2xl p-3 text-left ${active === c.id ? "bg-white/8" : ""}`}
+            >
+              <img
+                src={ch?.portraitUrl}
+                className="h-11 w-11 rounded-full"
+                alt=""
+              />
+              <span>
+                <b className="block">{ch?.name}</b>
+                <small className="text-zinc-500">
+                  {c.unread ? "New reply" : "Character studio"}
+                </small>
+              </span>
+            </button>
+          );
+        })}
+      </aside>
+      <section className="flex min-h-[500px] flex-col">
+        <div className="border-b border-white/8 p-4">
+          <b>{character?.name}</b>
+          <p className="text-xs text-zinc-500">
+            {memory?.summary ||
+              "Deterministic personality-aware mock conversation"}
+          </p>
+        </div>
+        <div className="flex-1 space-y-3 overflow-auto p-4">
+          {messages.map((m) => {
+            const attached = data.attachments
+              .filter((a) => a.messageId === m.id)
+              .map((a) => data.media.find((asset) => asset.id === a.mediaId))
+              .filter(Boolean) as MediaAsset[];
+            return (
+              <div
+                key={m.id}
+                className={`max-w-[84%] rounded-2xl px-3 py-2 text-sm ${m.role === "user" ? "ml-auto bg-fuchsia-500" : "bg-white/8"}`}
+              >
+                <p>{m.body}</p>
+                {attached.map((asset) => (
+                  <img
+                    key={asset.id}
+                    src={asset.posterUrl ?? asset.url}
+                    alt={asset.title}
+                    className="mt-2 h-24 w-24 rounded-xl object-cover"
+                  />
+                ))}
+              </div>
+            );
+          })}
+        </div>
+        <div className="border-t border-white/8 p-3">
+          <button
+            onClick={() => create(undefined, active, character?.id)}
+            className="mb-2 rounded-full bg-white/8 px-3 py-1 text-xs"
+          >
+            Create Scene from conversation
+          </button>
+          <div className="mb-2 flex gap-2">
+            <select
+              value={attach}
+              onChange={(e) => setAttach(e.target.value)}
+              className="min-w-0 flex-1 rounded-xl bg-white/8 px-3 py-2 text-xs"
+            >
+              <option value="">Attach Library media (optional)</option>
+              {data.media.slice(0, 20).map((asset) => (
+                <option key={asset.id} value={asset.id}>
+                  {asset.title}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex gap-2">
+            <input
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && send()}
+              placeholder="Message character"
+              className="min-w-0 flex-1 rounded-xl bg-white/8 px-3 py-2 outline-none"
+            />
+            <button onClick={send} className="rounded-xl bg-fuchsia-500 px-4">
+              Send
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+function CharacterHub({
+  data,
+  character,
+  select,
+  create,
+  go,
+}: {
+  data: AppSnapshot;
+  character?: AppSnapshot["characters"][number];
+  select: (m: MediaAsset) => void;
+  create: (
+    m?: MediaAsset,
+    conversationId?: string,
+    characterId?: string,
+  ) => void;
+  go: (x: View) => void;
+}) {
+  return (
+    <PremiumCharacterHub
+      data={data}
+      character={character}
+      select={select}
+      create={create}
+      go={go}
+    />
+  );
+}
+function Messages({
+  data,
+  go,
+  create,
+  refresh,
+}: {
+  data: AppSnapshot;
+  go: (x: View) => void;
+  create: (
+    m?: MediaAsset,
+    conversationId?: string,
+    characterId?: string,
+  ) => void;
+  refresh: () => Promise<void>;
+}) {
+  const [active, setActive] = useState(data.conversations[0]?.id);
+  const [text, setText] = useState("");
+  const conv = data.conversations.find((c) => c.id === active);
+  const character = data.characters.find((c) => c.id === conv?.characterId);
+  const messages = data.messages.filter((m) => m.conversationId === active);
+  const send = async () => {
+    if (!text.trim() || !active) return;
+    await fetch("/api/actions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "message", conversationId: active, text }),
+    });
+    setText("");
+    await refresh();
+  };
+  return (
+    <div className="grid min-h-[600px] overflow-hidden rounded-3xl border border-white/8 bg-[#12131a] md:grid-cols-[290px_1fr]">
+      <aside className="border-r border-white/8 p-3">
+        <h1 className="p-2 text-2xl font-bold">Messages</h1>
+        {data.conversations.map((c) => {
+          const ch = data.characters.find((x) => x.id === c.characterId);
+          const last = data.messages
+            .filter((m) => m.conversationId === c.id)
+            .at(-1);
+          return (
+            <button
+              key={c.id}
+              onClick={() => setActive(c.id)}
+              className={`flex w-full gap-3 rounded-2xl p-3 text-left ${active === c.id ? "bg-white/8" : ""}`}
+            >
+              <img
+                src={ch?.portraitUrl}
+                className="h-11 w-11 rounded-full"
+                alt=""
+              />
+              <span className="min-w-0">
+                <b className="block">{ch?.name}</b>
+                <small className="block truncate text-zinc-500">
+                  {last?.body}
+                </small>
+              </span>
+            </button>
+          );
+        })}
+      </aside>
+      <section className="flex min-h-[500px] flex-col">
+        <div className="border-b border-white/8 p-4">
+          <b>{character?.name}</b>
+          <p className="text-xs text-zinc-500">
+            Character conversation · deterministic mock replies
+          </p>
+        </div>
+        <div className="flex-1 space-y-3 overflow-auto p-4">
+          {messages.map((m) => (
+            <div
+              key={m.id}
+              className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${m.role === "user" ? "ml-auto bg-fuchsia-500" : "bg-white/8"}`}
+            >
+              {m.body}
+            </div>
+          ))}
+        </div>
+        <div className="border-t border-white/8 p-3">
+          <button
+            onClick={() => create(undefined, active, character?.id)}
+            className="mb-2 rounded-full bg-white/8 px-3 py-1 text-xs"
+          >
+            Create Scene from conversation
+          </button>
+          <div className="flex gap-2">
+            <input
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && send()}
+              placeholder="Message character"
+              className="min-w-0 flex-1 rounded-xl bg-white/8 px-3 py-2 outline-none"
+            />
+            <button onClick={send} className="rounded-xl bg-fuchsia-500 px-4">
+              Send
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+function Library({
+  data,
+  select,
+}: {
+  data: AppSnapshot;
+  select: (m: MediaAsset) => void;
+}) {
+  const [filter, setFilter] = useState("All");
+  const [search, setSearch] = useState("");
+  const media = data.media.filter(
+    (m) =>
+      (filter === "All" ||
+        (filter === "Images" && m.type === "image") ||
+        (filter === "Videos" && m.type === "video") ||
+        (filter === "Favorites" && m.favorite) ||
+        (filter === "References" && m.isReference)) &&
+      `${m.title} ${m.prompt}`.toLowerCase().includes(search.toLowerCase()),
+  );
+  return (
+    <>
+      <h1 className="text-3xl font-bold">Library</h1>
+      <p className="mt-1 text-sm text-zinc-500">
+        Private archive · provenance preserved per asset
+      </p>
+      <input
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Search title or prompt"
+        className="my-5 w-full rounded-2xl bg-white/6 px-4 py-3 outline-none"
+      />
+      <div className="mb-5 flex gap-2 overflow-x-auto">
+        {["All", "Images", "Videos", "Favorites", "References"].map((x) => (
+          <button
+            onClick={() => setFilter(x)}
+            key={x}
+            className={`rounded-full px-3 py-2 text-xs ${filter === x ? "bg-fuchsia-500" : "bg-white/7"}`}
+          >
+            {x}
+          </button>
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {media.map((m) => (
+          <button
+            onClick={() => select(m)}
+            key={m.id}
+            className="overflow-hidden rounded-2xl border border-white/8 bg-[#14151b] text-left"
+          >
+            <img
+              src={m.posterUrl ?? m.url}
+              className="aspect-square w-full object-cover"
+              alt=""
+            />
+            <div className="p-3">
+              <b className="block truncate text-sm">{m.title}</b>
+              <small className="text-zinc-500">
+                {m.providerId} · {time(m.createdAt)}
+              </small>
+            </div>
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
+function CharacterSettings({
+  data,
+  character,
+  refresh,
+  go,
+}: {
+  data: AppSnapshot;
+  character?: AppSnapshot["characters"][number];
+  refresh: () => Promise<void>;
+  go: (x: View) => void;
+}) {
+  const [form, setForm] = useState(character);
+  const [status, setStatus] = useState("");
+  if (!character || !form) return null;
+  const refs = data.characterReferences.filter(
+    (r) => r.characterId === character.id,
+  );
+  const assets = data.media.filter((m) => m.characterId === character.id);
+  const update = async () => {
+    await fetch("/api/actions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "character-update",
+        characterId: character.id,
+        characterPatch: {
+          name: form.name,
+          handle: form.handle,
+          description: form.description,
+          personality: form.personality,
+          identityNotes: form.identityNotes,
+          defaultsJson: form.defaultsJson,
+        },
+      }),
+    });
+    await refresh();
+    setStatus("Saved");
+  };
+  const add = async (id: string) => {
+    await fetch("/api/actions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "character-reference-add",
+        characterId: character.id,
+        mediaId: id,
+        role: "face",
+        canonical: true,
+      }),
+    });
+    await refresh();
+  };
+  return (
+    <div className="mx-auto max-w-3xl">
+      <button
+        onClick={() => go("character")}
+        className="mb-4 text-sm text-fuchsia-300"
+      >
+        ← Back to Character Hub
+      </button>
+      <h1 className="text-3xl font-bold">Character Settings</h1>
+      <p className="mb-6 text-sm text-zinc-500">
+        Visual identity and conversational personality remain deliberately
+        separate.
+      </p>
+      <div className="grid gap-5 md:grid-cols-2">
+        <section className="rounded-3xl border border-white/8 bg-[#13141b] p-5">
+          <h2 className="mb-4 font-bold">Identity</h2>
+          <label className="label">
+            Name
+            <input
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+            />
+          </label>
+          <label className="label">
+            Handle
+            <input
+              value={form.handle}
+              onChange={(e) => setForm({ ...form, handle: e.target.value })}
+            />
+          </label>
+          <label className="label">
+            Short description
+            <textarea
+              value={form.description}
+              onChange={(e) =>
+                setForm({ ...form, description: e.target.value })
+              }
+            />
+          </label>
+          <label className="label">
+            Appearance / identity notes
+            <textarea
+              value={form.identityNotes}
+              onChange={(e) =>
+                setForm({ ...form, identityNotes: e.target.value })
+              }
+            />
+          </label>
+        </section>
+        <section className="rounded-3xl border border-white/8 bg-[#13141b] p-5">
+          <h2 className="mb-4 font-bold">Personality</h2>
+          <label className="label">
+            Personality and speaking style
+            <textarea
+              value={form.personality}
+              onChange={(e) =>
+                setForm({ ...form, personality: e.target.value })
+              }
+            />
+          </label>
+          <label className="label">
+            Generation defaults (structured JSON)
+            <textarea
+              value={form.defaultsJson}
+              onChange={(e) =>
+                setForm({ ...form, defaultsJson: e.target.value })
+              }
+            />
+          </label>
+          <p className="text-xs text-zinc-500">
+            Future fields: lore, relationship context, reusable positive
+            fragments, negative constraints, image/video defaults.
+          </p>
+        </section>
+      </div>
+      <button
+        onClick={update}
+        className="mt-5 rounded-2xl bg-fuchsia-500 px-5 py-3 font-bold"
+      >
+        Save Character Settings
+      </button>
+      <span className="ml-3 text-sm text-fuchsia-200">{status}</span>
+      <section className="mt-7 rounded-3xl border border-white/8 bg-[#13141b] p-5">
+        <h2 className="font-bold">Reference Vault</h2>
+        <p className="mb-4 text-sm text-zinc-500">
+          Canonical packs are explicit, ordered, and reusable; removing one
+          never deletes its media source.
+        </p>
+        <div className="grid gap-3">
+          {refs.map((r) => {
+            const asset = data.media.find((m) => m.id === r.mediaId);
+            return (
+              <div
+                key={`${r.mediaId}-${r.role}`}
+                className="flex items-center gap-3 rounded-2xl bg-white/5 p-2"
+              >
+                <img
+                  src={asset?.posterUrl ?? asset?.url}
+                  alt=""
+                  className="h-12 w-12 rounded-xl object-cover"
+                />
+                <div className="min-w-0 flex-1">
+                  <b className="text-sm">{asset?.title}</b>
+                  <p className="text-xs text-zinc-500">
+                    {r.role} · {r.canonical ? "canonical" : "support"} ·
+                    priority {r.priority}
+                  </p>
+                </div>
+                <button
+                  onClick={async () => {
+                    await fetch("/api/actions", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        action: "character-reference-update",
+                        characterId: character.id,
+                        mediaId: r.mediaId,
+                        role: r.role,
+                        referencePatch: { canonical: !r.canonical },
+                      }),
+                    });
+                    await refresh();
+                  }}
+                  className="rounded-full bg-white/10 px-3 py-1 text-xs"
+                >
+                  {r.canonical ? "Unmark canonical" : "Mark canonical"}
+                </button>
+                <button
+                  onClick={async () => {
+                    await fetch("/api/actions", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        action: "character-reference-remove",
+                        characterId: character.id,
+                        mediaId: r.mediaId,
+                        role: r.role,
+                      }),
+                    });
+                    await refresh();
+                  }}
+                  className="text-xs text-zinc-500"
+                >
+                  Remove
+                </button>
+              </div>
+            );
+          })}
+        </div>
+        <p className="mt-5 text-sm text-zinc-400">
+          Add existing character media
+        </p>
+        <div className="mt-2 flex gap-2 overflow-x-auto">
+          {assets
+            .filter((m) => !refs.some((r) => r.mediaId === m.id))
+            .map((asset) => (
+              <button
+                key={asset.id}
+                onClick={() => add(asset.id)}
+                className="min-w-20 overflow-hidden rounded-xl"
+              >
+                <img
+                  src={asset.posterUrl ?? asset.url}
+                  alt={asset.title}
+                  className="h-20 w-20 object-cover"
+                />
+              </button>
+            ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+function JobCenter({
+  data,
+  select,
+  refresh,
+}: {
+  data: AppSnapshot;
+  select: (m: MediaAsset) => void;
+  refresh: () => Promise<void>;
+}) {
+  const [filter, setFilter] = useState("all");
+  const jobs = data.jobs.filter((j) => filter === "all" || j.status === filter);
+  return (
+    <div>
+      <h1 className="text-3xl font-bold">Activity</h1>
+      <p className="mb-5 text-sm text-zinc-500">
+        Persistent normalized jobs · provider events · $0.00 mock usage
+      </p>
+      <div className="mb-4 flex flex-wrap gap-2">
+        {[
+          "all",
+          "queued",
+          "generating",
+          "finalizing",
+          "completed",
+          "failed",
+          "cancelled",
+        ].map((x) => (
+          <button
+            key={x}
+            onClick={() => setFilter(x)}
+            className={`rounded-full px-3 py-2 text-xs ${filter === x ? "bg-fuchsia-500" : "bg-white/8"}`}
+          >
+            {x}
+          </button>
+        ))}
+      </div>
+      <div className="space-y-3">
+        {jobs.map((job) => {
+          const output = data.media.find((m) => m.id === job.mediaId);
+          const events = data.events.filter((e) => e.jobId === job.id);
+          return (
+            <article
+              key={job.id}
+              className="rounded-2xl border border-white/8 bg-[#13141b] p-4"
+            >
+              <div className="flex justify-between gap-3">
+                <div>
+                  <b className="capitalize">
+                    {job.mode} · {job.status}
+                  </b>
+                  <p className="text-sm text-zinc-500">
+                    {job.providerId} · {job.prompt.slice(0, 80)}
+                  </p>
+                </div>
+                <span className="text-xs text-fuchsia-200">$0.00</span>
+              </div>
+              <p className="mt-2 text-xs text-zinc-500">
+                {events.at(-1)?.message ?? "Awaiting provider event"}
+              </p>
+              <div className="mt-3 flex gap-2">
+                {output && (
+                  <button
+                    onClick={() => select(output)}
+                    className="rounded-full bg-white/10 px-3 py-1 text-xs"
+                  >
+                    Open result
+                  </button>
+                )}
+                <button
+                  onClick={async () => {
+                    await fetch(`/api/jobs/${job.id}`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: '{"action":"simulate-callback"}',
+                    });
+                    await refresh();
+                  }}
+                  disabled={["completed", "failed", "cancelled"].includes(
+                    job.status,
+                  )}
+                  className="rounded-full bg-white/10 px-3 py-1 text-xs disabled:opacity-30"
+                >
+                  Simulate callback
+                </button>
+                <button
+                  onClick={() =>
+                    alert(
+                      JSON.stringify(
+                        {
+                          job,
+                          references: data.jobReferences.filter(
+                            (r) => r.jobId === job.id,
+                          ),
+                        },
+                        null,
+                        2,
+                      ),
+                    )
+                  }
+                  className="rounded-full bg-white/10 px-3 py-1 text-xs"
+                >
+                  Inspect request
+                </button>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+function Collections({
+  data,
+  refresh,
+  select,
+}: {
+  data: AppSnapshot;
+  refresh: () => Promise<void>;
+  select: (m: MediaAsset) => void;
+}) {
+  const [name, setName] = useState("");
+  return (
+    <div>
+      <h1 className="text-3xl font-bold">Collections</h1>
+      <div className="my-5 flex gap-2">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="New collection"
+          className="min-w-0 flex-1 rounded-xl bg-white/8 px-3 py-2"
+        />
+        <button
+          onClick={async () => {
+            if (!name.trim()) return;
+            await fetch("/api/actions", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "collection-create", name }),
+            });
+            setName("");
+            await refresh();
+          }}
+          className="rounded-xl bg-fuchsia-500 px-4"
+        >
+          Create
+        </button>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        {data.collections.map((c) => (
+          <section
+            key={c.id}
+            className="rounded-2xl border border-white/8 bg-[#13141b] p-4"
+          >
+            <b>{c.name}</b>
+            <p className="mb-3 text-xs text-zinc-500">
+              {c.mediaIds.length} media assets
+            </p>
+            <div className="flex gap-2 overflow-x-auto">
+              {c.mediaIds.map((id) => {
+                const asset = data.media.find((m) => m.id === id);
+                return (
+                  asset && (
+                    <button onClick={() => select(asset)} key={id}>
+                      <img
+                        src={asset.posterUrl ?? asset.url}
+                        className="h-16 w-16 rounded-lg object-cover"
+                        alt=""
+                      />
+                    </button>
+                  )
+                );
+              })}
+            </div>
+          </section>
+        ))}
+      </div>
+    </div>
+  );
+}
+function ProviderLab({
+  data,
+  go,
+}: {
+  data: AppSnapshot;
+  go: (x: View) => void;
+}) {
+  const [preview, setPreview] = useState<unknown>(null);
+  const test = async () =>
+    setPreview(
+      await json(
+        await fetch("/api/provider-preview", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            family: "seedance-2.5",
+            mode: "reference",
+            prompt: "Dry-run only",
+            references: [
+              {
+                id: "opening",
+                url: "/fixture/opening.png",
+                kind: "image",
+                role: "opening-frame",
+              },
+              {
+                id: "motion",
+                url: "/fixture/motion.mp4",
+                kind: "video",
+                role: "motion",
+              },
+              {
+                id: "audio",
+                url: "/fixture/audio.mp3",
+                kind: "audio",
+                role: "audio-mood",
+              },
+            ],
+            duration: 5,
+            resolution: "720p",
+            aspectRatio: "16:9",
+          }),
+        }),
+      ),
+    );
+  return (
+    <div className="mx-auto max-w-2xl rounded-3xl border border-amber-300/20 bg-amber-300/5 p-6">
+      <p className="text-xs uppercase tracking-[.2em] text-amber-200">
+        Development only · dry run
+      </p>
+      <h1 className="mt-2 text-3xl font-bold">Provider Contract Lab</h1>
+      <p className="mt-3 text-zinc-400">
+        No external provider is contacted. Compare normalized capabilities,
+        preview sanitized routes/payloads, and use mocks for queue, failures,
+        cancellation, retry, and callback completion.
+      </p>
+      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+        {data.capabilities.map((c) => (
+          <div key={c.providerId} className="rounded-2xl bg-black/25 p-4">
+            <b>{c.label}</b>
+            <p className="mt-2 text-sm text-zinc-500">
+              {c.advancedControls.join(" · ")}
+            </p>
+          </div>
+        ))}
+      </div>
+      <div className="mt-5 rounded-2xl border border-white/10 bg-black/25 p-4">
+        <b>Live deployment comparison</b>
+        <p className="mt-1 text-sm text-zinc-500">
+          HotAPI reference routing is image/audio only; MuAPI Omni accepts
+          image, video, and audio references. Both remain Not connected.
+        </p>
+        <button
+          onClick={test}
+          className="mt-3 rounded-xl bg-white/10 px-3 py-2 text-sm"
+        >
+          Preview Live Request
+        </button>
+        {preview && (
+          <pre className="mt-3 max-h-72 overflow-auto rounded-xl bg-black/40 p-3 text-xs text-fuchsia-100">
+            {JSON.stringify(preview, null, 2)}
+          </pre>
+        )}
+      </div>
+      <button
+        onClick={() => go("create")}
+        className="mt-6 rounded-2xl bg-fuchsia-500 px-4 py-3 font-bold"
+      >
+        Open Create Lab
+      </button>
+    </div>
+  );
+}
+function Detail({
+  data,
+  asset,
+  character,
+  close,
+  favorite,
+  reference,
+  remix,
+  animate,
+}: {
+  data: AppSnapshot;
+  asset: MediaAsset;
+  character?: AppSnapshot["characters"][number];
+  close: () => void;
+  favorite: (id: string) => void;
+  reference: (id: string) => void;
+  remix: () => void;
+  animate: () => void;
+}) {
+  const [note, setNote] = useState("");
+  const save = async () => {
+    await fetch("/api/actions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "note", mediaId: asset.id, note }),
+    });
+  };
+  const job = data.jobs.find((j) => j.mediaId === asset.id);
+  const lineage = job
+    ? data.jobReferences
+        .filter((r) => r.jobId === job.id)
+        .map((r) => ({
+          role: r.role,
+          asset: data.media.find((m) => m.id === r.mediaId),
+        }))
+    : [];
+  const children = data.media.filter((m) => m.parentId === asset.id);
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-end bg-black/70 p-0 backdrop-blur-sm md:place-items-center md:p-6">
+      <section className="max-h-[94vh] w-full max-w-3xl overflow-auto rounded-t-3xl bg-[#171820] p-5 md:rounded-3xl">
+        <div className="mb-4 flex justify-between">
+          <div>
+            <p className="font-bold">{asset.title}</p>
+            <p className="text-sm text-zinc-500">
+              {character?.name} · {asset.providerId}
+            </p>
+          </div>
+          <button onClick={close} className="rounded-full bg-white/8 px-3">
+            ×
+          </button>
+        </div>
+        <img
+          src={asset.posterUrl ?? asset.url}
+          className="mx-auto max-h-[62vh] w-full rounded-2xl object-contain"
+          alt={asset.title}
+        />
+        <p className="mt-4 text-sm text-zinc-300">{asset.caption}</p>
+        <p className="mt-2 rounded-xl bg-black/20 p-3 text-xs text-zinc-400">
+          Prompt: {asset.prompt}
+        </p>
+        {job && (
+          <section className="mt-3 rounded-2xl border border-white/8 bg-black/20 p-3">
+            <p className="text-xs font-bold uppercase tracking-[.14em] text-fuchsia-200">
+              Lineage
+            </p>
+            <p className="mt-1 text-xs text-zinc-400">
+              {asset.parentId ? "Parent attached" : "Original"} ↓ Current asset
+              ↓ {children.length} child remix{children.length === 1 ? "" : "es"}
+            </p>
+            <p className="mt-1 text-xs text-zinc-400">
+              {job.providerId} · {job.mode} · {lineage.length} structured
+              reference{lineage.length === 1 ? "" : "s"}
+            </p>
+            {lineage.length > 0 && (
+              <div className="mt-2 flex gap-2 overflow-x-auto">
+                {lineage.map(
+                  (item) =>
+                    item.asset && (
+                      <div
+                        key={`${item.role}-${item.asset.id}`}
+                        className="min-w-20"
+                      >
+                        <img
+                          src={item.asset.posterUrl ?? item.asset.url}
+                          alt=""
+                          className="h-14 w-14 rounded-lg object-cover"
+                        />
+                        <p className="mt-1 text-[10px] text-zinc-500">
+                          {item.role}
+                        </p>
+                      </div>
+                    ),
+                )}
+              </div>
+            )}
+          </section>
+        )}
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            onClick={() => favorite(asset.id)}
+            className="rounded-full bg-white/8 px-3 py-2 text-sm"
+          >
+            {asset.favorite ? "Unfavorite" : "Favorite"}
+          </button>
+          <button
+            onClick={() => reference(asset.id)}
+            className="rounded-full bg-white/8 px-3 py-2 text-sm"
+          >
+            Use as Reference
+          </button>
+          <button
+            onClick={remix}
+            className="rounded-full bg-white/8 px-3 py-2 text-sm"
+          >
+            Remix
+          </button>
+          {asset.type === "image" && (
+            <button
+              onClick={animate}
+              className="rounded-full bg-fuchsia-500 px-3 py-2 text-sm font-bold"
+            >
+              Animate
+            </button>
+          )}
+        </div>
+        <div className="mt-4 flex gap-2">
+          <input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Private production note"
+            className="min-w-0 flex-1 rounded-xl bg-white/7 px-3 py-2"
+          />
+          <button onClick={save} className="rounded-xl bg-white/10 px-3">
+            Save
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
