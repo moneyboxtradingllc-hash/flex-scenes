@@ -18,6 +18,7 @@ import { PremiumExplore } from "@/components/explore-surface";
 import { PremiumLibrary } from "@/components/library-surface";
 import { PremiumMediaDetail } from "@/components/media-detail";
 import { GenerationProgress } from "@/components/generation-surfaces";
+import { UiIcon } from "@/components/ui-icon";
 
 type View =
   | "home"
@@ -52,7 +53,7 @@ const nav = [
   ["explore", "Explore"],
   ["create", "Create"],
   ["reels", "Reels"],
-  ["profile", "Profile"],
+  ["library", "Library"],
 ] as const;
 const time = (value: string) =>
   new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(
@@ -175,39 +176,22 @@ export function StudioApp({
       sceneContext: proposal ? { concept: proposal.concept, location: proposal.location, wardrobe: proposal.wardrobe, mood: proposal.mood, lighting: proposal.lighting, shotDescription: proposal.shotDescription, cameraDirection: proposal.cameraDirection, proposedImagePlan: proposal.proposedImagePlan, proposedVideoPlan: proposal.proposedVideoPlan } : undefined,
     });
   const header = (
-    <header className="sticky top-0 z-20 flex items-center justify-between border-b border-white/8 bg-[#08090d]/90 px-5 py-4 backdrop-blur">
-      <button
-        onClick={() => go("home")}
-        className="text-xl font-black tracking-[-.08em]"
-      >
-        flex<span className="text-fuchsia-400">.</span>scenes
-      </button>
-      <div className="flex gap-2">
-        <button
-          aria-label="Messages"
-          onClick={() => go("messages")}
-          className="rounded-full bg-white/7 px-3 py-2 text-sm"
-        >
-          {icon.messages}
-        </button>
-        <button
-          aria-label="Library"
-          onClick={() => go("library")}
-          className="rounded-full bg-white/7 px-3 py-2 text-sm"
-        >
-          {icon.library}
-        </button>
+    <header className={`app-header sticky top-0 z-20 flex items-center justify-between border-b border-white/8 bg-[#08090d]/90 px-5 py-4 backdrop-blur ${view === "home" ? "app-header-home" : ""}`}>
+      <button onClick={() => go("home")} className="brand-lockup" aria-label="Flex Scenes home"><span>FLEX</span><span>SCENES</span></button>
+      <div className="app-header-actions">
+        <button aria-label="Open Messages" onClick={() => go("messages")} className="app-header-icon"><UiIcon name="messages" /></button>
+        {view !== "home" && <button aria-label="Open Library" onClick={() => go("library")} className="app-header-icon"><UiIcon name="library" /></button>}
       </div>
     </header>
   );
   return (
-    <main className={`mx-auto min-h-screen max-w-[1680px] bg-[#08090d] pb-20 text-zinc-100 md:grid md:grid-cols-[220px_minmax(0,1fr)] ${isWideArchive ? "xl:grid-cols-[220px_minmax(0,1fr)]" : "xl:grid-cols-[220px_minmax(0,1fr)_300px]"} md:pb-0`}>
-      <aside className="hidden border-r border-white/8 bg-[#0c0d12] p-5 md:block">
+    <main className={`studio-shell mx-auto min-h-screen max-w-[1680px] bg-[#08090d] pb-20 text-zinc-100 md:grid md:grid-cols-[220px_minmax(0,1fr)] ${view === "home" ? "is-home-view" : ""} ${isWideArchive ? "xl:grid-cols-[220px_minmax(0,1fr)]" : "xl:grid-cols-[220px_minmax(0,1fr)_300px]"} md:pb-0`}>
+      <aside className="app-desktop-nav hidden border-r border-white/8 bg-[#0c0d12] p-5 md:block">
         <button
           onClick={() => go("home")}
           className="mb-9 text-2xl font-black tracking-[-.08em]"
         >
-          flex<span className="text-fuchsia-400">.</span>scenes
+          <span>FLEX</span><span>SCENES</span>
         </button>
         {nav.map(([id, label]) => (
           <NavButton
@@ -223,12 +207,6 @@ export function StudioApp({
           label="Messages"
           active={view === "messages"}
           onClick={() => go("messages")}
-        />
-        <NavButton
-          id="library"
-          label="Library"
-          active={view === "library"}
-          onClick={() => go("library")}
         />
         <NavButton
           id="jobs"
@@ -251,7 +229,7 @@ export function StudioApp({
       </aside>
       <section className="min-w-0 border-x border-white/5">
         {header}
-        <div className={`mx-auto w-full ${isWideArchive ? "max-w-none" : "max-w-[900px]"} p-4 md:p-7`}>
+        <div className={`studio-page-content mx-auto w-full ${view === "home" ? "home-page-content" : ""} ${isWideArchive ? "max-w-none" : "max-w-[900px]"} p-4 md:p-7`}>
           {view === "home" && (
             <Home
               data={data}
@@ -259,7 +237,7 @@ export function StudioApp({
               select={setSelected}
               favorite={favorite}
               reference={reference}
-              create={createFrom}
+              create={(asset, mode) => createFrom(asset, undefined, asset?.characterId, mode)}
               setCharacter={setActiveCharacter}
             />
           )}{" "}
@@ -317,23 +295,17 @@ export function StudioApp({
         </div>
       </section>
       {!isWideArchive && <ContextRail data={data} character={active} view={view} go={go} />}
-      <nav className="fixed bottom-0 left-0 right-0 z-30 flex justify-around border-t border-white/10 bg-[#111218]/95 px-2 py-2 backdrop-blur md:hidden">
+      <nav aria-label="Main navigation" className="app-bottom-nav fixed bottom-0 left-0 right-0 z-30 flex justify-around border-t border-white/10 bg-[#111218]/95 px-2 py-2 backdrop-blur md:hidden">
         {nav.map(([id, label]) => (
           <button
             key={id}
             onClick={() => go(id as View)}
-            className={`grid place-items-center gap-0.5 rounded-xl px-3 py-1 text-[10px] ${view === id ? "text-fuchsia-300" : "text-zinc-400"}`}
+            aria-current={view === id ? "page" : undefined}
+            aria-label={id === "create" ? "Create a scene" : label}
+            className={`bottom-nav-item ${id === "create" ? "bottom-nav-create" : ""} ${view === id ? "is-active" : ""}`}
           >
-            <span
-              className={
-                id === "create"
-                  ? "rounded-full bg-fuchsia-500 px-2 py-0.5 text-base text-white"
-                  : "text-lg"
-              }
-            >
-              {icon[id]}
-            </span>
-            {label}
+            <span className="bottom-nav-icon"><UiIcon name={id} /></span>
+            <span className="bottom-nav-label">{label}</span>
           </button>
         ))}
       </nav>
@@ -479,8 +451,8 @@ function NavButton({
       onClick={onClick}
       className={`mb-2 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm ${active ? "bg-fuchsia-500/15 text-fuchsia-200" : "text-zinc-400 hover:bg-white/5"}`}
     >
-      <span className="text-lg">{icon[id]}</span>
-      {label}
+      <span className="desktop-nav-icon"><UiIcon name={id as "home" | "explore" | "create" | "reels" | "messages" | "library" | "jobs" | "collections"} /></span>
+      <span>{label}</span>
     </button>
   );
 }
@@ -498,7 +470,7 @@ function Home({
   select: (x: MediaAsset) => void;
   favorite: (id: string) => void;
   reference: (id: string) => void;
-  create: (x?: MediaAsset) => void;
+  create: (x?: MediaAsset, mode?: "image" | "video") => void;
   setCharacter: (id: string) => void;
 }) {
   return (
@@ -509,6 +481,7 @@ function Home({
       reference={reference}
       create={create}
       setCharacter={setCharacter}
+      openCharacter={() => go("character")}
     />
   );
 }

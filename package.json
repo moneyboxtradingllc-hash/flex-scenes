@@ -9,7 +9,9 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --maxWorkers=1",
-    "seed": "tsx scripts/seed.ts"
+    "seed": "tsx scripts/seed.ts",
+    "visual:install": "playwright install chromium",
+    "visual:shot": "node scripts/visual-shot.mjs"
   },
   "dependencies": {
     "next": "^16.3.6",
@@ -23,6 +25,7 @@
     "@types/react-dom": "^19.3.0",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.3.6",
+    "playwright": "^1.63.0",
     "postcss": "^8.5.23",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.15",
