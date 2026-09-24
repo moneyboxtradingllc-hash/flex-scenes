@@ -67,8 +67,8 @@ main nav.app-bottom-nav button.bottom-nav-create { min-width: 58px; min-height: 
 .home-icon-button { display: grid; width: 36px; height: 36px; flex: none; place-items: center; border: 0; border-radius: 50%; background: transparent; color: #f5f3f6; }
 .home-icon-button:hover { background: rgba(255,255,255,.07); }
 .home-icon-button svg { width: 20px; height: 20px; }
-.home-post-media { position: relative; display: block; width: 100%; overflow: hidden; border: 0; border-radius: 4px; background: #11131a; padding: 0; }
-.home-post-media img { display: block; width: 100%; height: auto; max-height: 76dvh; object-fit: contain; }
+.home-post-media { position: relative; display: block; width: 100%; aspect-ratio: 4 / 3; overflow: hidden; border: 0; border-radius: 4px; background: #11131a; padding: 0; }
+.home-post-media img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; max-height: none; object-fit: cover; object-position: center 20%; }
 .home-video-badge { position: absolute; right: 10px; bottom: 10px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid rgba(255,255,255,.17); border-radius: 999px; background: rgba(5,6,8,.66); padding: 6px 9px; color: #fff; font-size: 9px; backdrop-filter: blur(12px); }
 .home-video-play { font-size: 9px; }
 .home-post-actions { display: flex; min-height: 43px; align-items: center; justify-content: space-between; padding: 2px 0 0; }
@@ -115,7 +115,6 @@ main nav.app-bottom-nav button.bottom-nav-create { min-width: 58px; min-height: 
   .home-post { margin-right: calc(-1 * var(--ui2-mobile-gutter)); margin-left: calc(-1 * var(--ui2-mobile-gutter)); }
   .home-post-header { min-height: 48px; padding-right: var(--ui2-mobile-gutter); padding-left: var(--ui2-mobile-gutter); }
   .home-post-media { width: 100%; border-radius: 0; }
-  .home-post-media img { width: 100%; max-height: 74dvh; object-fit: cover; }
   .home-post-actions { padding-right: var(--ui2-mobile-gutter); padding-left: var(--ui2-mobile-gutter); }
   .home-post-caption { padding: 0 var(--ui2-mobile-gutter) 12px; }
   .home-post-kind, .home-creative-actions { display: none; }
@@ -124,8 +123,10 @@ main nav.app-bottom-nav button.bottom-nav-create { min-width: 58px; min-height: 
   .home-story-ring { width: 60px; height: 60px; }
   .home-stories { gap: 11px; padding-top: 6px; padding-bottom: 7px; }
   .home-post-header { min-height: 45px; }
-  main nav.app-bottom-nav button.bottom-nav-create { min-width: 54px; min-height: 54px; }
-  .bottom-nav-create .bottom-nav-icon { width: 46px; height: 46px; }
+  main nav.app-bottom-nav { min-height: calc(58px + env(safe-area-inset-bottom)); padding-top: 2px !important; padding-bottom: max(2px, env(safe-area-inset-bottom)) !important; }
+  main nav.app-bottom-nav button.bottom-nav-item { min-height: 46px; }
+  main nav.app-bottom-nav button.bottom-nav-create { min-width: 50px; min-height: 50px; }
+  .bottom-nav-create .bottom-nav-icon { width: 42px; height: 42px; }
   .app-header .brand-lockup { font-size: 17px !important; letter-spacing: -.075em !important; }
   .home-post-header button:first-child { font-size: inherit !important; font-style: normal !important; letter-spacing: normal !important; text-transform: none !important; }
   main nav.app-bottom-nav button.bottom-nav-item { min-width: 52px; }
