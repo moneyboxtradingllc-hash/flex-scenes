@@ -25,3 +25,13 @@ article:hover { border-color:rgba(255,118,185,.32)!important; }
 input,textarea,select { border-color:rgba(255,255,255,.09)!important; background:rgba(255,255,255,.055)!important; }
 input::placeholder,textarea::placeholder { color:rgba(228,226,234,.42); }
 @media (max-width:767px){ body{background:#07090c} main>section>div{padding:16px!important} article{border-radius:24px!important} }
+
+/* Compact, image-led mobile chrome for the existing functional surfaces. */
+@media (max-width:767px){
+  main > section > div > div > h1 { letter-spacing:-.045em; }
+  main nav { padding-bottom:max(.55rem, env(safe-area-inset-bottom))!important; background:rgba(12,14,19,.96)!important; }
+  main nav button { min-width:54px; }
+  main nav button span.rounded-full { box-shadow:0 8px 25px rgba(250,38,137,.38); }
+  main header { padding-left:18px!important; padding-right:18px!important; }
+  main header button:first-child { font-size:1.35rem!important; }
+}
