@@ -1,0 +1,6 @@
+import { describe,expect,it } from "vitest";
+import { previewSiray, sirayContract } from "../lib/siray";
+describe("Siray contract lane",()=>{
+ it("maps Seedream text without unsupported seed or negative prompt",()=>{const result=previewSiray({family:"seedream-5.0-pro",mode:"text",prompt:"safe portrait",references:[],resolution:"1024x1024"}).find(x=>x.deployment==="siray-seedream-t2i")!;expect(result.compatible).toBe(true);expect(result.payload).toMatchObject({model:sirayContract.seedreamModels.t2i,output_format:"png"});expect(result.payload).not.toHaveProperty("seed");expect(result.estimatedUsd).toBe(.045);});
+ it("routes mixed image video and audio references only to Siray ref2v",()=>{const request={family:"seedance-2.5" as const,mode:"reference" as const,prompt:"safe motion",resolution:"480p",duration:4,references:[{id:"i",url:"https://example.invalid/i.png",kind:"image" as const,role:"subject" as const},{id:"v",url:"https://example.invalid/v.mp4",kind:"video" as const,role:"motion" as const},{id:"a",url:"https://example.invalid/a.mp3",kind:"audio" as const,role:"audio-mood" as const}]};const ref=previewSiray(request).find(x=>x.deployment==="siray-seedance-ref2v")!;expect(ref.compatible).toBe(true);expect(ref.payload).toHaveProperty("videos");expect(ref.payload).toHaveProperty("audio");});
+});

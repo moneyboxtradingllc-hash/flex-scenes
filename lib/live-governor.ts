@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { db } from "./db";
 
-export type ProviderName = "HotAPI" | "MuAPI";
+export type ProviderName = "HotAPI" | "MuAPI" | "Siray";
 export type LivePlan = { provider: ProviderName; deployment: string; request: unknown; estimate: number; videoReferenceSeconds?: number };
 const now = () => new Date().toISOString();
 const vaultPath = path.join(process.cwd(), "data", "provider-secrets.json");
