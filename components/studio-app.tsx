@@ -12,6 +12,7 @@ import { PremiumHome } from "@/components/home-surface";
 import { PremiumCharacterHub } from "@/components/character-hub-surface";
 import { PremiumCreateStudio } from "@/components/create-studio-surface";
 import { PremiumMessages } from "@/components/messages-surface";
+import { PremiumReels } from "@/components/reels-surface";
 
 type View =
   | "home"
@@ -217,7 +218,13 @@ export function StudioApp({
             />
           )}{" "}
           {view === "reels" && (
-            <Reels data={data} select={setSelected} create={createFrom} />
+            <PremiumReels
+              data={data}
+              select={setSelected}
+              favorite={favorite}
+              reference={reference}
+              create={createFrom}
+            />
           )}{" "}
           {view === "messages" && (
             <PremiumMessages
@@ -1223,7 +1230,7 @@ function JobState({
     </div>
   );
 }
-function Reels({
+function LegacyReels({
   data,
   select,
   create,

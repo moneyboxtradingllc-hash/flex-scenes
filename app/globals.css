@@ -35,3 +35,34 @@ input::placeholder,textarea::placeholder { color:rgba(228,226,234,.42); }
   main header { padding-left:18px!important; padding-right:18px!important; }
   main header button:first-child { font-size:1.35rem!important; }
 }
+
+/* Reels keeps the media tall and cinematic while respecting the shared shell. */
+.reels-action{display:flex;min-width:48px;min-height:48px;align-items:center;justify-content:center;gap:.65rem;border:1px solid rgba(255,255,255,.09);border-radius:999px;background:rgba(15,16,21,.72);padding:.7rem;backdrop-filter:blur(12px);transition:background-color .16s ease,border-color .16s ease,transform .16s ease}
+.reels-action:hover{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.2)}
+.reels-action-horizontal{width:100%;justify-content:flex-start;border-radius:14px;background:rgba(255,255,255,.035);padding:.6rem .75rem}
+.reels-viewer{width:100%;}
+.reels-media{width:100%;height:min(76dvh,820px);min-height:440px;aspect-ratio:9/16;}
+.reels-media video,.reels-media>img{max-height:100%;max-width:100%;}
+.reels-stage{min-height:0}
+@media (min-width:768px){
+  .reels-viewer-wrap{max-width:calc(100% - 1rem)}
+  .reels-media{height:min(78dvh,860px);min-height:540px}
+}
+@media (min-width:1024px){
+  .reels-shell{width:calc(100% + 3rem);margin-left:-1.5rem}
+  .reels-toolbar{margin-bottom:1rem}
+  .reels-viewer{border-radius:24px}
+  .reels-media{height:min(77dvh,850px);min-height:540px}
+}
+@media (min-width:1280px){
+  .reels-shell{width:calc(100% + 6rem);margin-left:-3rem}
+  .reels-stage{grid-template-columns:minmax(0,1fr) 220px}
+  .reels-viewer-wrap{max-width:590px}
+}
+@media (max-width:767px){
+  .reels-toolbar{padding-top:.25rem}
+  .reels-media{height:calc(100dvh - 206px - env(safe-area-inset-bottom));min-height:430px;max-height:800px;aspect-ratio:auto}
+  .reels-viewer{border-radius:0;border-left:0;border-right:0}
+  .reels-pagination{padding-top:.55rem;padding-bottom:.55rem}
+}
+@media (max-height:650px) and (min-width:768px){.reels-media{height:68dvh;min-height:400px}}
