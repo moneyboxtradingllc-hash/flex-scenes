@@ -25,8 +25,8 @@ export function HomeV2(props: HomeActions) {
   return (
     <div className="home-v2" data-ui-v2="home" data-home-architecture="dedicated">
       <HomeDesktop {...props} />
-      <HomeMobile {...props} />
       <MobileAppShell view="home" characters={props.data.characters} character={props.character} navigate={props.navigate} setCharacter={props.setCharacter} overlayOpen={Boolean(props.detail)} />
+      <HomeMobile {...props} />
       {props.detail}
     </div>
   );

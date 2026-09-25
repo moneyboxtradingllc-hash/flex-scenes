@@ -31,10 +31,13 @@ const mobileV3Captures = [
   { width: 393, height: 852, name: "mobile-v3-home-393" },
   { width: 430, height: 932, name: "mobile-v3-home-430" },
 ];
+const homeTopbarCapture = [{ width: 393, height: 852, name: "home-topbar-at-top-393" }];
 const captures = process.argv.includes("--home-v2")
   ? referenceCaptures
   : process.argv.includes("--desktop-v3")
     ? desktopV3Captures
+  : process.argv.includes("--home-topbar")
+    ? homeTopbarCapture
   : process.argv.includes("--mobile-v3")
     ? mobileV3Captures
   : process.argv.includes("--mobile-home")
@@ -240,6 +243,47 @@ try {
     const output = path.join(outputDir, `${name}.png`);
     await page.screenshot({ path: output, animations: "disabled" });
     console.log(`${output} ${JSON.stringify(metrics)}`);
+    if (process.argv.includes("--home-topbar") && target === "/" && width === 393) {
+      const topBar = page.locator(".mobile-top-layer.is-home .mobile-top-bar");
+      const dock = page.locator(".mobile-bottom-dock");
+      const atTop = await page.evaluate(() => {
+        const rect = document.querySelector(".mobile-top-layer.is-home .mobile-top-bar")?.getBoundingClientRect();
+        return { scrollY: window.scrollY, top: rect?.top ?? null, bottom: rect?.bottom ?? null };
+      });
+      if (atTop.scrollY !== 0 || atTop.top === null || atTop.top < 0 || atTop.bottom > height) throw new Error(`Home top bar is not visible at the top of the document: ${JSON.stringify(atTop)}`);
+
+      await page.getByRole("button", { name: "Open Flex Scenes menu" }).click();
+      if (!(await page.locator("#mobile-app-menu").isVisible())) throw new Error("Home menu failed to open before scroll");
+      const firstScroll = await page.evaluate(() => {
+        const media = document.querySelector(".home-v2-mobile .home-v2-media");
+        const distance = media?.getBoundingClientRect().height ?? 300;
+        window.scrollTo(0, distance);
+        return distance;
+      });
+      await page.waitForTimeout(250);
+      const afterOneMedia = await page.evaluate(() => {
+        const rect = document.querySelector(".mobile-top-layer.is-home .mobile-top-bar")?.getBoundingClientRect();
+        const dock = document.querySelector(".mobile-bottom-dock")?.getBoundingClientRect();
+        return { scrollY: window.scrollY, top: rect?.top ?? null, bottom: rect?.bottom ?? null, dockTop: dock?.top ?? null };
+      });
+      if (afterOneMedia.scrollY < firstScroll - 2 || afterOneMedia.bottom === null || afterOneMedia.bottom > 0) throw new Error(`Home top bar did not scroll completely out of view after one media height: ${JSON.stringify(afterOneMedia)}`);
+      if (await page.locator("#mobile-app-menu").count()) throw new Error("Home menu remained open after its top-bar anchor scrolled away");
+      if (!(await dock.isVisible())) throw new Error("Floating bottom dock disappeared after scrolling");
+      await page.screenshot({ path: path.join(outputDir, "home-topbar-scrolled-393.png"), animations: "disabled" });
+
+      await page.evaluate((distance) => window.scrollTo(0, distance + window.innerHeight * 0.6), firstScroll);
+      await page.waitForTimeout(100);
+      if (await topBar.evaluate((node) => node.getBoundingClientRect().bottom > 0)) throw new Error("Home top bar reappeared deeper in the feed");
+      await page.evaluate(() => window.scrollBy(0, -48));
+      await page.waitForTimeout(100);
+      const afterSmallUp = await page.evaluate(() => ({ scrollY: window.scrollY, bottom: document.querySelector(".mobile-top-layer.is-home .mobile-top-bar")?.getBoundingClientRect().bottom ?? null }));
+      if (afterSmallUp.scrollY <= 0 || afterSmallUp.bottom === null || afterSmallUp.bottom > 0) throw new Error(`Small upward scroll revealed the Home top bar below document top: ${JSON.stringify(afterSmallUp)}`);
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.waitForTimeout(120);
+      const returnedToTop = await page.evaluate(() => ({ scrollY: window.scrollY, visible: (() => { const rect = document.querySelector(".mobile-top-layer.is-home .mobile-top-bar")?.getBoundingClientRect(); return Boolean(rect && rect.top >= 0 && rect.bottom <= innerHeight); })() }));
+      if (returnedToTop.scrollY !== 0 || !returnedToTop.visible || !(await dock.isVisible())) throw new Error(`Home top bar did not return at document top or dock did not persist: ${JSON.stringify(returnedToTop)}`);
+      console.log(`Home top-bar scroll behavior passed ${JSON.stringify({ atTop, afterOneMedia, afterSmallUp, returnedToTop })}`);
+    }
     if (process.argv.includes("--mobile-v3") && target === "/" && width === 393) {
       const actionCalls = [];
       await page.route("**/api/actions", async (route) => {

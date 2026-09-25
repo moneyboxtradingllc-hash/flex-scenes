@@ -17,6 +17,7 @@ export function MobileTopBar({ view, character, characters, navigate, setCharact
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -39,13 +40,22 @@ export function MobileTopBar({ view, character, characters, navigate, setCharact
     };
   }, [open]);
 
+  useEffect(() => {
+    if (!open || view !== "home" || !barRef.current) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) setOpen(false);
+    });
+    observer.observe(barRef.current);
+    return () => observer.disconnect();
+  }, [open, view]);
+
   const title = view === "create" ? "Create" : view === "progress" ? "Progress" : view === "result" ? "Result" : "FLEX SCENES";
   const searchAction = ["home", "explore", "library"].includes(view);
   const showMessages = ["home", "explore", "reels", "library", "character", "collections", "jobs", "settings"].includes(view);
   const showActivity = view === "home";
-  return <div className={`mobile-top-layer ${minimal ? "is-minimal" : ""}`}>
+  return <div className={`mobile-top-layer ${view === "home" ? "is-home" : ""} ${minimal ? "is-minimal" : ""}`}>
     <div className="mobile-top-cluster" ref={rootRef}>
-      <div className="mobile-top-bar">
+      <div className="mobile-top-bar" ref={barRef}>
       <button ref={titleRef} className="mobile-top-title" aria-label="Open Flex Scenes menu" aria-expanded={open} aria-controls="mobile-app-menu" onClick={() => setOpen((value) => !value)}>
         <span className={title === "FLEX SCENES" ? "mobile-brand-wordmark" : ""}>{title === "FLEX SCENES" ? <>FLEX <b>SCENES</b></> : title}</span>
         <span className="mobile-title-chevron" aria-hidden="true">⌄</span>
