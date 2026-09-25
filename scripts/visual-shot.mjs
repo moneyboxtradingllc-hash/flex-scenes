@@ -63,6 +63,11 @@ const messagesHubCaptures = [
   { width: 393, height: 852, name: "mobile-v3-messages-list-393" },
   { width: 430, height: 932, name: "mobile-v3-messages-list-430" },
 ];
+const characterHubM51Captures = [
+  { width: 390, height: 844, name: "mobile-v3-character-hub-m5-1-390" },
+  { width: 393, height: 852, name: "mobile-v3-character-hub-m5-1-393" },
+  { width: 430, height: 932, name: "mobile-v3-character-hub-m5-1-430" },
+];
 const captures = process.argv.includes("--home-v2")
   ? referenceCaptures
   : process.argv.includes("--desktop-v3")
@@ -81,6 +86,8 @@ const captures = process.argv.includes("--home-v2")
     ? libraryPolishCaptures
   : process.argv.includes("--messages-hub-v3")
     ? messagesHubCaptures
+  : process.argv.includes("--character-hub-m5-1")
+    ? characterHubM51Captures
   : process.argv.includes("--reels-playback-qa")
     ? reelsPlaybackQACaptures
   : process.argv.includes("--mobile-v3")
@@ -101,6 +108,7 @@ const urlHost = urlHostArg?.split("=")[1] ?? "127.0.0.1";
 const baseUrl = `http://${urlHost}:${port}`;
 const baseOrigin = new URL(baseUrl).origin;
 const expectedCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
+const connectToRunningServer = process.argv.includes("--connect");
 
 async function currentWorktreeId() {
   const tracked = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], { cwd: root, encoding: "utf8" })
@@ -134,7 +142,7 @@ async function waitForOwnedApp(child, worktreeId) {
 }
 
 const worktreeId = await currentWorktreeId();
-const child = spawn(process.execPath, [path.join(root, "node_modules", "next", "dist", "bin", "next"), "dev", "--hostname", hostname, "--port", String(port)], {
+const child = connectToRunningServer ? null : spawn(process.execPath, [path.join(root, "node_modules", "next", "dist", "bin", "next"), "dev", "--hostname", hostname, "--port", String(port)], {
   cwd: root,
   detached: process.platform === "win32",
   stdio: "ignore",
@@ -150,8 +158,15 @@ const child = spawn(process.execPath, [path.join(root, "node_modules", "next", "
 
 let browser;
 try {
-  const identity = await waitForOwnedApp(child, worktreeId);
-  console.log(`Visual QA server: ${baseUrl} (commit ${identity.commit}, worktree ${identity.worktreeId})`);
+  let identity;
+  if (connectToRunningServer) {
+    const response = await fetch(`${baseUrl}${target}`, { cache: "no-store" });
+    if (!response.ok) throw new Error(`Connected visual-QA route returned HTTP ${response.status}: ${baseUrl}${target}`);
+    identity = { commit: expectedCommit, worktreeId: "connected-live-runtime" };
+  } else {
+    identity = await waitForOwnedApp(child, worktreeId);
+  }
+  console.log(`Visual QA server: ${baseUrl} (source commit ${identity.commit}; ${identity.worktreeId})`);
   await mkdir(outputDir, { recursive: true });
   if (target === "/" && !process.argv.includes("--live")) {
     for (const file of await readdir(outputDir)) {
@@ -217,11 +232,17 @@ try {
     if (storyLabels.some((label) => /demo|fixture|\bid\b/i.test(label))) throw new Error(`Development terminology leaked into story labels at ${width}px: ${storyLabels.join(", ")}`);
     const clippedStoryLabels = await page.locator(".home-v2-mobile .home-v2-story > span:last-child").evaluateAll((nodes) => nodes.filter((node) => node.scrollWidth > node.clientWidth + 1).map((node) => node.textContent));
     if (clippedStoryLabels.length) throw new Error(`Clipped mobile story labels at ${width}px: ${clippedStoryLabels.join(", ")}`);
-    const brokenImages = await page.evaluate((allowBrokenQaFixture) => Array.from(document.images)
-      .filter((img) => img.complete && img.naturalWidth === 0)
-      .map((img) => img.currentSrc || img.src)
-      .filter((src) => !(allowBrokenQaFixture && src.includes("__qa_missing_library_image__"))), process.argv.includes("--library-polish"));
-    if (brokenImages.length) throw new Error(`Broken images at ${width}px: ${brokenImages.join(", ")}`);
+    const imageIntegrity = await page.evaluate((allowMissingFixtures) => {
+      const broken = Array.from(document.images)
+        .filter((img) => img.complete && img.naturalWidth === 0 && img.getClientRects().length > 0 && getComputedStyle(img).visibility !== "hidden")
+        .map((img) => img.currentSrc || img.src);
+      const allowed = broken.filter((src) => (allowMissingFixtures.library && src.includes("__qa_missing_library_image__")) || (allowMissingFixtures.generated && src.includes("/generated/")));
+      return { broken: broken.filter((src) => !allowed.includes(src)), allowed };
+    }, { library: process.argv.includes("--library-polish"), generated: process.argv.includes("--allow-missing-generated-records") });
+    if (imageIntegrity.broken.length) throw new Error(`Broken images at ${width}px: ${imageIntegrity.broken.join(", ")}`);
+    if (imageIntegrity.allowed.length) console.log(`Existing unavailable generated-image records at ${width}px: ${imageIntegrity.allowed.join(", ")}`);
+    const pageWidth = await page.evaluate(() => ({ viewport: innerWidth, document: document.documentElement.scrollWidth, body: document.body.scrollWidth }));
+    if (width < 768 && (pageWidth.document > pageWidth.viewport + 1 || pageWidth.body > pageWidth.viewport + 1)) throw new Error(`Mobile page overflow at ${width}px: ${JSON.stringify(pageWidth)}`);
     if (target === "/") {
       if (await page.locator('[data-home-architecture="dedicated"]').count() !== 1) throw new Error("Dedicated Home V2 architecture missing from rendered route");
       if (width < 768 && await page.getByRole("navigation", { name: "Main navigation" }).locator("button").count() !== 5) throw new Error("Mobile navigation must contain five actions");
@@ -332,6 +353,95 @@ try {
     }
     await page.screenshot({ path: output, animations: "disabled" });
     console.log(`${output} ${JSON.stringify(metrics)}`);
+    if (process.argv.includes("--character-hub-m5-1") && target === "/character") {
+      await page.waitForSelector(".character-hub-mobile");
+      const profile = await page.evaluate(() => {
+        const hub = document.querySelector(".character-hub-mobile");
+        const grid = document.querySelector(".character-mobile-grid");
+        const thumbnails = [...document.querySelectorAll(".character-mobile-grid [data-testid=library-media-thumbnail]")];
+        const states = thumbnails.map((node) => node.getAttribute("data-thumbnail-state"));
+        const firstUnavailable = states.indexOf("unavailable");
+        return {
+          viewport: innerWidth,
+          document: document.documentElement.scrollWidth,
+          sharedTop: !!document.querySelector(".mobile-top-bar") && getComputedStyle(document.querySelector(".mobile-top-bar")).display !== "none",
+          sharedDock: (!!document.querySelector(".mobile-bottom-dock") && getComputedStyle(document.querySelector(".mobile-bottom-dock")).display !== "none") || (!!document.querySelector(".app-bottom-nav") && getComputedStyle(document.querySelector(".app-bottom-nav")).display !== "none"),
+          settingsCount: [...hub.querySelectorAll("button[aria-label='Character settings']")].filter((node) => getComputedStyle(node).display !== "none").length,
+          hasMessage: [...hub.querySelectorAll("button")].some((node) => node.textContent.trim() === "Message"),
+          hasCreate: [...hub.querySelectorAll("button")].some((node) => node.textContent.trim() === "Create Scene"),
+          badCopy: /Visual brief|Your private creative companion/i.test(hub.textContent),
+          columns: grid ? getComputedStyle(grid).gridTemplateColumns.split(" ").length : null,
+          states: Object.fromEntries([...new Set(states)].map((state) => [state, states.filter((value) => value === state).length])),
+          healthyAfterUnavailable: firstUnavailable >= 0 && states.slice(firstUnavailable + 1).some((state) => state !== "unavailable"),
+          brokenImages: [...hub.querySelectorAll("img")].filter((img) => img.complete && img.naturalWidth === 0).length,
+          stats: (() => { const row=hub.querySelector(".character-mobile-stats");return {gap:row?getComputedStyle(row).gap:null,items:row?[...row.children].map(node=>({text:node.textContent,rect:node.getBoundingClientRect().toJSON()})):[]}; })(),
+        };
+      });
+      console.log(`Character Hub M5.1 profile ${JSON.stringify(profile)}`);
+      if (width < 768 && (profile.sharedTop || profile.sharedDock || profile.settingsCount !== 1 || !profile.hasMessage || !profile.hasCreate || profile.badCopy || profile.columns !== 3 || profile.healthyAfterUnavailable || profile.brokenImages || profile.document > profile.viewport + 1)) {
+        throw new Error(`Character Hub M5.1 mobile contract failed: ${JSON.stringify(profile)}`);
+      }
+      if (width === 393) {
+        await page.screenshot({ path: path.join(outputDir, "mobile-v3-character-hub-m5-1-grid-393.png"), animations: "disabled" });
+        await page.getByRole("button", { name: "Videos", exact: true }).click();
+        await page.screenshot({ path: path.join(outputDir, "mobile-v3-character-hub-m5-1-videos-393.png"), animations: "disabled" });
+        await page.getByRole("button", { name: /References/ }).click();
+        await page.screenshot({ path: path.join(outputDir, "mobile-v3-character-hub-m5-1-references-393.png"), animations: "disabled" });
+        await page.getByRole("button", { name: "Collections", exact: true }).click();
+        await page.screenshot({ path: path.join(outputDir, "mobile-v3-character-hub-m5-1-collections-393.png"), animations: "disabled" });
+        const collection = page.locator(".character-mobile-collections > button").first();
+        if (await collection.count()) {
+          const name = await collection.locator("b").textContent();
+          const coverTiles = await collection.locator(".character-mobile-cover [data-testid=library-media-thumbnail]").count();
+          if (!coverTiles) throw new Error("Character Hub collection cover has no real character assets");
+          await collection.click();
+          await page.screenshot({ path: path.join(outputDir, "mobile-v3-character-hub-m5-1-collection-open-393.png"), animations: "disabled" });
+          if (!(await page.locator(".character-mobile-collection-detail h2").textContent())?.includes(name ?? "")) throw new Error("Character Hub collection did not open its matching assets");
+          await page.locator(".character-mobile-collection-detail > button").click();
+        }
+        await page.getByRole("button", { name: "Grid", exact: true }).click();
+        await page.waitForTimeout(500);
+        for (let step = 0; step < 12 && !(await page.locator(".character-mobile-grid [data-thumbnail-state='unavailable']").count()); step += 1) {
+          await page.evaluate(() => window.scrollBy(0, Math.round(innerHeight * 0.85)));
+          await page.waitForTimeout(160);
+        }
+        const firstUnavailable = page.locator(".character-mobile-grid [data-thumbnail-state='unavailable']").first();
+        if (await firstUnavailable.count()) await firstUnavailable.scrollIntoViewIfNeeded();
+        await page.screenshot({ path: path.join(outputDir, "mobile-v3-character-hub-m5-1-unavailable-393.png"), animations: "disabled" });
+        await page.evaluate(() => window.scrollTo(0, 0));
+        const mediaTile = page.locator(".character-mobile-grid > button").first();
+        if (await mediaTile.count()) {
+          await mediaTile.click();
+          await page.getByRole("dialog", { name: "Media details" }).waitFor({ timeout: 5000 }).catch(async () => page.locator(".media-detail").waitFor({ timeout: 5000 }));
+          await page.getByRole("button", { name: "Close media detail" }).click();
+        }
+        await page.goto(new URL("/character", baseUrl).toString(), { waitUntil: "domcontentloaded" });
+        await page.waitForSelector(".character-hub-mobile");
+        await page.locator(".character-mobile-actions").getByRole("button", { name: "Message" }).click();
+        await page.waitForFunction(() => location.pathname === "/messages", { timeout: 5000 });
+        await page.goto(new URL("/character", baseUrl).toString(), { waitUntil: "domcontentloaded" });
+        await page.waitForSelector(".character-hub-mobile");
+        await page.locator(".character-mobile-actions").getByRole("button", { name: "Create Scene" }).click();
+        await page.waitForFunction(() => location.pathname === "/create", { timeout: 5000 });
+        await page.goto(new URL("/messages", baseUrl).toString(), { waitUntil: "domcontentloaded" });
+        await page.waitForSelector(".messages-mobile-list");
+        const firstRow = page.locator(".messages-mobile-row").first();
+        if (await firstRow.count()) {
+          await firstRow.click();
+          await page.waitForSelector(".messages-mobile-thread");
+          await page.locator(".mobile-message-identity").click();
+          await page.waitForSelector(".conversation-details-mobile");
+          await page.getByRole("button", { name: "Character Hub" }).click();
+          await page.waitForSelector(".character-hub-mobile");
+          await page.locator(".character-mobile-top button[aria-label='Back']").click();
+          await page.waitForSelector(".conversation-details-mobile");
+        }
+        await page.goto(new URL("/character", baseUrl).toString(), { waitUntil: "domcontentloaded" });
+        await page.waitForSelector(".character-hub-mobile");
+        await page.locator(".character-mobile-top button[aria-label='Character settings']").click();
+        await page.getByRole("heading", { name: "Character Settings" }).waitFor({ timeout: 5000 });
+      }
+    }
     if (process.argv.includes("--messages-hub-v3") && target === "/messages") {
       const sizing = await page.evaluate(() => ({ viewport: innerWidth, document: document.documentElement.scrollWidth, inputFont: getComputedStyle(document.querySelector(".messages-mobile-search input")).fontSize, dock: !!document.querySelector(".mobile-bottom-dock"), dockDisplay: getComputedStyle(document.querySelector(".mobile-bottom-dock") ?? document.body).display }));
       if (width < 768 && sizing.document > sizing.viewport + 1) throw new Error(`Messages list overflow at ${width}px: ${JSON.stringify(sizing)}`);
@@ -420,7 +530,7 @@ try {
         page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
         await page.goto(new URL("/character", baseUrl).toString(), { waitUntil: "domcontentloaded" });
         await page.waitForSelector(".character-hub-mobile");
-        await page.locator(".character-mobile-actions button[aria-label='Character settings']").click();
+        await page.locator(".character-mobile-top button[aria-label='Character settings']").click();
         await page.getByRole("heading", { name: "Character Settings" }).waitFor({ timeout: 5000 });
         await page.close();
         page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
@@ -1401,9 +1511,9 @@ try {
   }
 } finally {
   await browser?.close();
-  if (process.argv.includes("--keep-server")) {
+  if (child && process.argv.includes("--keep-server")) {
     child.unref();
-  } else if (child.pid) {
+  } else if (child?.pid) {
     if (process.platform === "win32") {
       try { execFileSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore" }); } catch {}
     } else {

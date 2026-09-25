@@ -5,7 +5,7 @@ export type MobilePrimaryDestination = Extract<HomeDestination, "home" | "explor
 export function mobileRouteChrome(view: string, options: { messageThread?: boolean; overlayOpen?: boolean } = {}) {
   const focused = ["create", "progress", "result"].includes(view) || options.overlayOpen === true;
   const thread = view === "messages" && options.messageThread === true;
-  const hidden = view === "lab";
+  const hidden = view === "lab" || view === "character";
   return {
     topBar: !hidden && !thread && view !== "reels",
     flowTopBar: ["home", "explore", "library"].includes(view),

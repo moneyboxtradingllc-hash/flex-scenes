@@ -13,12 +13,14 @@ export function LibraryMediaThumbnail({
   alt = "",
   loading = "lazy",
   style,
+  onStateChange,
 }: {
   asset: MediaAsset;
   className?: string;
   alt?: string;
   loading?: "eager" | "lazy";
   style?: CSSProperties;
+  onStateChange?: (assetId: string, state: "image" | "poster" | "video-frame" | "video-loading" | "unavailable") => void;
 }) {
   const hostRef = useRef<HTMLSpanElement>(null);
   const [posterFailed, setPosterFailed] = useState(false);
@@ -48,6 +50,11 @@ export function LibraryMediaThumbnail({
   }, [tryVideo]);
 
   const unavailable = isVideo ? videoFailed || (tryVideo && !asset.url) : imageFailed || !asset.url;
+  const thumbnailState = unavailable ? "unavailable" : isVideo && tryVideo ? frameReady ? "video-frame" : "video-loading" : isVideo ? "poster" : "image";
+
+  useEffect(() => {
+    onStateChange?.(asset.id, thumbnailState);
+  }, [asset.id, onStateChange, thumbnailState]);
   const fallbackText = isVideo ? "Video preview unavailable" : "Image unavailable";
 
   return (
@@ -59,7 +66,7 @@ export function LibraryMediaThumbnail({
       aria-label={alt || asset.title || (isVideo ? "Video" : "Image")}
       data-testid="library-media-thumbnail"
       data-media-kind={asset.type}
-      data-thumbnail-state={unavailable ? "unavailable" : isVideo && tryVideo ? frameReady ? "video-frame" : "video-loading" : "image"}
+      data-thumbnail-state={thumbnailState}
     >
       {unavailable ? (
         <span className="library-media-fallback" data-testid="library-thumbnail-fallback" aria-hidden="true">
