@@ -314,21 +314,60 @@ try {
         const descriptor = Object.getOwnPropertyDescriptor(window, "visualViewport");
         if (!descriptor?.configurable) return false;
         window.__visualViewportDescriptor = descriptor;
+        const originalHeight = window.visualViewport?.height ?? window.innerHeight;
         const keyboardViewport = new EventTarget();
-        Object.defineProperty(keyboardViewport, "height", { value: Math.max(200, window.innerHeight - 330) });
+        let height = originalHeight;
+        Object.defineProperty(keyboardViewport, "height", { get: () => height });
+        window.__keyboardViewport = keyboardViewport;
+        window.__setVisualViewportHeight = (nextHeight) => {
+          height = nextHeight;
+          keyboardViewport.dispatchEvent(new Event("resize"));
+          keyboardViewport.dispatchEvent(new Event("scroll"));
+          window.dispatchEvent(new Event("resize"));
+        };
+        window.__visualViewportBaseline = originalHeight;
         Object.defineProperty(window, "visualViewport", { configurable: true, value: keyboardViewport });
-        document.activeElement?.dispatchEvent(new Event("focusin", { bubbles: true }));
         return true;
       });
       if (keyboardMocked) {
+        await page.evaluate(() => window.__setVisualViewportHeight(Math.max(200, window.__visualViewportBaseline - 330)));
         await page.waitForFunction(() => document.querySelector("[data-mobile-shell]")?.getAttribute("data-keyboard-open") === "true");
         if (await dock.isVisible()) throw new Error("Floating dock overlapped the search keyboard viewport");
         await checkNoOverflow("search keyboard open");
+
+        // Safari can dismiss the keyboard without blurring the focused search.
+        // The viewport may remain slightly reduced by browser chrome.
+        await page.evaluate(() => {
+          window.__setVisualViewportHeight(window.__visualViewportBaseline - 70);
+        });
+        await page.waitForFunction(() => document.querySelector("[data-mobile-shell]")?.getAttribute("data-keyboard-open") !== "true");
+        if (!(await dock.isVisible())) throw new Error("Floating dock did not return after keyboard dismissal while search stayed focused");
+        if (!(await search.evaluate((node) => document.activeElement === node))) throw new Error("Keyboard-dismiss simulation unexpectedly blurred the search field");
+
+        await page.evaluate(() => window.scrollTo(0, Math.max(400, document.documentElement.scrollHeight / 3)));
+        await page.waitForTimeout(50);
+        if (!(await dock.isVisible())) throw new Error("Floating dock disappeared after scrolling with the keyboard closed");
+
+        await page.evaluate(() => window.__setVisualViewportHeight(window.__visualViewportBaseline - 330));
+        await page.waitForFunction(() => document.querySelector("[data-mobile-shell]")?.getAttribute("data-keyboard-open") === "true");
+        if (await dock.isVisible()) throw new Error("Floating dock did not hide when the keyboard reopened");
+        await page.evaluate(() => window.__setVisualViewportHeight(window.__visualViewportBaseline));
+        await page.waitForFunction(() => document.querySelector("[data-mobile-shell]")?.getAttribute("data-keyboard-open") !== "true");
+        if (!(await dock.isVisible())) throw new Error("Floating dock did not return after the second keyboard dismissal");
+
+        // A Safari toolbar-only change is deliberately smaller than the
+        // keyboard threshold and must leave the dock visible.
+        await page.evaluate(() => window.__setVisualViewportHeight(window.__visualViewportBaseline - 90));
+        await page.waitForTimeout(50);
+        if (await page.locator("[data-mobile-shell]").getAttribute("data-keyboard-open") === "true" || !(await dock.isVisible())) throw new Error("Safari browser-chrome viewport change was misclassified as the keyboard");
+
         await page.evaluate(() => {
           const original = window.__visualViewportDescriptor;
           if (original) Object.defineProperty(window, "visualViewport", original);
           delete window.__visualViewportDescriptor;
-          document.activeElement?.dispatchEvent(new Event("focusin", { bubbles: true }));
+          delete window.__keyboardViewport;
+          delete window.__setVisualViewportHeight;
+          delete window.__visualViewportBaseline;
         });
       }
       await page.getByRole("button", { name: "Clear search" }).click();
