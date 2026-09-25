@@ -53,6 +53,11 @@ const libraryV3Captures = [
   { width: 393, height: 852, name: "mobile-v3-library-393" },
   { width: 430, height: 932, name: "mobile-v3-library-430" },
 ];
+const libraryPolishCaptures = [
+  { width: 390, height: 844, name: "mobile-v3-library-polish-390" },
+  { width: 393, height: 852, name: "mobile-v3-library-polish-393" },
+  { width: 430, height: 932, name: "mobile-v3-library-polish-430" },
+];
 const captures = process.argv.includes("--home-v2")
   ? referenceCaptures
   : process.argv.includes("--desktop-v3")
@@ -67,6 +72,8 @@ const captures = process.argv.includes("--home-v2")
     ? reelsImmersiveCaptures
   : process.argv.includes("--library-v3")
     ? libraryV3Captures
+  : process.argv.includes("--library-polish")
+    ? libraryPolishCaptures
   : process.argv.includes("--reels-playback-qa")
     ? reelsPlaybackQACaptures
   : process.argv.includes("--mobile-v3")
@@ -128,7 +135,7 @@ const child = spawn(process.execPath, [path.join(root, "node_modules", "next", "
   env: {
     ...process.env,
     FLEX_SCENES_QA_WORKTREE_ID: worktreeId,
-    ...((process.argv.includes("--reels-playback-qa") || process.argv.includes("--reels-immersive")) ? { FLEX_SCENES_LOCAL_QA: "1" } : {}),
+    ...((process.argv.includes("--reels-playback-qa") || process.argv.includes("--reels-immersive") || process.argv.includes("--library-polish")) ? { FLEX_SCENES_LOCAL_QA: "1" } : {}),
     ...(hostname === "0.0.0.0" ? { FLEX_SCENES_LAN_IP: urlHost } : {}),
   },
 });
@@ -155,7 +162,12 @@ try {
     });
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
-    page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+    page.on("console", (message) => {
+      const text = message.text();
+      const location = message.location().url;
+      const expectedBrokenQaRequest = process.argv.includes("--library-polish") && /__qa_missing_library_(?:image|video)__/.test(`${text} ${location}`);
+      if (message.type() === "error" && !expectedBrokenQaRequest) errors.push(text);
+    });
     if (process.argv.includes("--library-v3") && target === "/library" && width === 393) {
       const mutations = [];
       await page.route("**/api/actions", async (route) => {
@@ -178,6 +190,7 @@ try {
       });
     }
     const pageUrl = new URL(target, baseUrl);
+    if (process.argv.includes("--library-polish") && target === "/library") pageUrl.searchParams.set("qaLibraryPolish", "1");
     if ((process.argv.includes("--reels-playback-qa") || process.argv.includes("--reels-immersive")) && target === "/reels") pageUrl.searchParams.set("qaPlayback", "1");
     await page.goto(pageUrl.toString(), { waitUntil: "domcontentloaded" });
     await page.evaluate(() => document.fonts.ready);
@@ -196,7 +209,10 @@ try {
     if (storyLabels.some((label) => /demo|fixture|\bid\b/i.test(label))) throw new Error(`Development terminology leaked into story labels at ${width}px: ${storyLabels.join(", ")}`);
     const clippedStoryLabels = await page.locator(".home-v2-mobile .home-v2-story > span:last-child").evaluateAll((nodes) => nodes.filter((node) => node.scrollWidth > node.clientWidth + 1).map((node) => node.textContent));
     if (clippedStoryLabels.length) throw new Error(`Clipped mobile story labels at ${width}px: ${clippedStoryLabels.join(", ")}`);
-    const brokenImages = await page.evaluate(() => Array.from(document.images).filter((img) => img.complete && img.naturalWidth === 0).map((img) => img.currentSrc || img.src));
+    const brokenImages = await page.evaluate((allowBrokenQaFixture) => Array.from(document.images)
+      .filter((img) => img.complete && img.naturalWidth === 0)
+      .map((img) => img.currentSrc || img.src)
+      .filter((src) => !(allowBrokenQaFixture && src.includes("__qa_missing_library_image__"))), process.argv.includes("--library-polish"));
     if (brokenImages.length) throw new Error(`Broken images at ${width}px: ${brokenImages.join(", ")}`);
     if (target === "/") {
       if (await page.locator('[data-home-architecture="dedicated"]').count() !== 1) throw new Error("Dedicated Home V2 architecture missing from rendered route");
@@ -787,6 +803,112 @@ try {
       }
       await checkOverflow("final interaction sequence");
       console.log(`Mobile Library QA passed ${JSON.stringify({ ...initial, mutationsMocked: page.__libraryMutations.length, routes: 7, topBar: "flow-only, returns at absolute top", detailReturn: true })}`);
+    }
+
+    if (process.argv.includes("--library-polish") && target === "/library") {
+      const expectNoPageOverflow = async (stage) => {
+        const size = await page.evaluate(() => ({ viewport: innerWidth, document: document.documentElement.scrollWidth, body: document.body.scrollWidth }));
+        if (size.document > size.viewport + 1 || size.body > size.viewport + 1) throw new Error(`Library polish horizontal overflow at ${width}px (${stage}): ${JSON.stringify(size)}`);
+        return size;
+      };
+      const layout = await page.evaluate(() => {
+        const rect = (selector) => document.querySelector(selector)?.getBoundingClientRect();
+        const actions = [...document.querySelectorAll(".library-header-actions button")].map((node) => ({
+          text: node.innerText.trim(),
+          label: node.getAttribute("aria-label"),
+          height: Math.round(node.getBoundingClientRect().height),
+          right: Math.round(node.getBoundingClientRect().right),
+          clipped: [...node.querySelectorAll(".library-mobile-action-label")].some((label) => label.scrollWidth > label.clientWidth + 1),
+        }));
+        const strip = document.querySelector(".library-characters");
+        return {
+          columns: getComputedStyle(document.querySelector(".library-grid")).gridTemplateColumns.split(" ").length,
+          actions,
+          strip: strip ? { clientWidth: strip.clientWidth, scrollWidth: strip.scrollWidth, right: Math.round(strip.getBoundingClientRect().right) } : null,
+          inputFontSize: getComputedStyle(document.querySelector(".library-search input")).fontSize,
+          dock: rect(".mobile-bottom-dock")?.toJSON() ?? null,
+        };
+      });
+      if (width < 768 && layout.columns !== 3) throw new Error(`Mobile Library must retain three columns: ${JSON.stringify(layout)}`);
+      if (layout.inputFontSize !== "16px") throw new Error(`Mobile Library search font should stay 16px: ${layout.inputFontSize}`);
+      if (layout.actions.some((action) => action.height < 44 || action.right > width)) throw new Error(`Library Import/Create controls do not fit or meet touch size: ${JSON.stringify(layout.actions)}`);
+      if (width < 768 && (layout.actions[0]?.text !== "Import" || layout.actions[1]?.text !== "Create" || layout.actions.some((action) => action.clipped))) throw new Error(`Mobile Library action labels are not compact and fully visible: ${JSON.stringify(layout.actions)}`);
+      if (!layout.strip || layout.strip.right > width || layout.strip.scrollWidth <= layout.strip.clientWidth) throw new Error(`Character strip should scroll within the viewport: ${JSON.stringify(layout.strip)}`);
+      await expectNoPageOverflow("initial view");
+
+      if (width === 393) {
+        const waitForFailureFallbacks = async () => page.waitForFunction(() => {
+          const missingImage = document.querySelector('[data-media-kind="image"][aria-label="QA bad image URL"]');
+          const missingVideo = document.querySelector('[data-media-kind="video"][aria-label="QA missing video file"]');
+          const previewVideo = document.querySelector('[data-media-kind="video"][aria-label="QA video without poster"]');
+          return missingImage?.getAttribute("data-thumbnail-state") === "unavailable" &&
+            missingVideo?.getAttribute("data-thumbnail-state") === "unavailable" &&
+            previewVideo?.getAttribute("data-thumbnail-state") === "video-frame";
+        }, { timeout: 12000 }).catch(async (error) => {
+          const states = await page.evaluate(() => [...document.querySelectorAll('[data-testid="library-media-thumbnail"]')].map((node) => ({ label: node.getAttribute("aria-label"), kind: node.getAttribute("data-media-kind"), state: node.getAttribute("data-thumbnail-state"), video: node.querySelector("video") ? { readyState: node.querySelector("video").readyState, error: node.querySelector("video").error?.code } : null })));
+          throw new Error(`${error.message}; thumbnail states: ${JSON.stringify(states)}`);
+        });
+        const waitForVideoFallbacks = async () => page.waitForFunction(() =>
+          document.querySelector('[data-media-kind="video"][aria-label="QA missing video file"]')?.getAttribute("data-thumbnail-state") === "unavailable" &&
+          document.querySelector('[data-media-kind="video"][aria-label="QA video without poster"]')?.getAttribute("data-thumbnail-state") === "video-frame",
+        { timeout: 12000 });
+        await waitForFailureFallbacks();
+
+        const failureProof = await page.evaluate(() => {
+          const roots = [...document.querySelectorAll(".library-tile [data-testid=library-media-thumbnail]")];
+          const tileFor = (name) => roots.find((node) => node.getAttribute("aria-label") === name);
+          const video = tileFor("QA video without poster")?.querySelector("video");
+          const badImage = tileFor("QA bad image URL");
+          const badVideo = tileFor("QA missing video file");
+          const brokenImages = [...document.querySelectorAll(".library-vault img")].filter((image) => image.complete && image.naturalWidth === 0).length;
+          return {
+            noPosterVideo: { state: tileFor("QA video without poster")?.getAttribute("data-thumbnail-state"), muted: video?.muted, paused: video?.paused, tag: video?.tagName },
+            badImage: { state: badImage?.getAttribute("data-thumbnail-state"), placeholder: !!badImage?.querySelector("[data-testid=library-thumbnail-fallback]"), imageElements: badImage?.querySelectorAll("img").length },
+            missingVideo: { state: badVideo?.getAttribute("data-thumbnail-state"), placeholder: !!badVideo?.querySelector("[data-testid=library-thumbnail-fallback]") },
+            brokenImages,
+            badImageGeometry: badImage?.getBoundingClientRect().toJSON(),
+          };
+        });
+        if (failureProof.noPosterVideo.tag !== "VIDEO" || failureProof.noPosterVideo.muted !== true || failureProof.noPosterVideo.paused !== true || failureProof.noPosterVideo.state !== "video-frame") throw new Error(`Posterless video did not render as a safe paused preview: ${JSON.stringify(failureProof.noPosterVideo)}`);
+        if (failureProof.badImage.state !== "unavailable" || !failureProof.badImage.placeholder || failureProof.badImage.imageElements !== 0 || !failureProof.missingVideo.placeholder || failureProof.brokenImages !== 0) throw new Error(`Library media error fallback failed: ${JSON.stringify(failureProof)}`);
+        if (Math.abs(failureProof.badImageGeometry.width - failureProof.badImageGeometry.height) > 1) throw new Error(`Broken media fallback changed square tile geometry: ${JSON.stringify(failureProof.badImageGeometry)}`);
+
+        await page.locator(".library-filter-row button").filter({ hasText: "Videos" }).click();
+        await waitForVideoFallbacks();
+        await page.screenshot({ path: path.join(outputDir, "mobile-v3-library-polish-videos-393.png"), animations: "disabled" });
+        await page.locator(".library-filter-row button").filter({ hasText: "Collections" }).click();
+        await waitForFailureFallbacks();
+        const coverProof = await page.evaluate(() => {
+          const cover = [...document.querySelectorAll(".library-collection-cover")].find((node) => node.querySelector('[aria-label="QA video without poster"]'));
+          const preview = cover?.querySelector('[aria-label="QA video without poster"]');
+          const missing = cover?.querySelector('[aria-label="QA missing video file"]');
+          const badImage = cover?.querySelector('[aria-label="QA bad image URL"]');
+          return { cover: !!cover, layout: cover?.className, preview: preview?.getAttribute("data-thumbnail-state"), videoCount: preview?.querySelectorAll("video").length, missing: missing?.getAttribute("data-thumbnail-state"), badImage: badImage?.getAttribute("data-thumbnail-state"), width: cover?.getBoundingClientRect().width };
+        });
+        if (!coverProof.cover || coverProof.preview !== "video-frame" || coverProof.videoCount !== 1 || coverProof.missing !== "unavailable" || coverProof.badImage !== "unavailable") throw new Error(`Collection cover did not use safe video/image thumbnail fallbacks: ${JSON.stringify(coverProof)}`);
+        await page.screenshot({ path: path.join(outputDir, "mobile-v3-library-polish-collections-393.png"), animations: "disabled" });
+
+        await page.locator(".library-filter-row button").filter({ hasText: "All" }).click();
+        const characterButtons = page.locator(".library-characters > button[aria-pressed]");
+        if (await characterButtons.count() > 1) await characterButtons.nth(1).click();
+        const stripProof = await page.evaluate(() => ({
+          clearControlDisplay: getComputedStyle(document.querySelector(".library-clear-character") ?? document.body).display,
+          allCharactersPressed: document.querySelector(".library-all-characters")?.getAttribute("aria-pressed"),
+          names: [...document.querySelectorAll(".library-characters>button>span")].map((node) => ({ text: node.textContent.trim(), right: node.getBoundingClientRect().right, parentRight: node.parentElement.getBoundingClientRect().right })),
+        }));
+        if (stripProof.clearControlDisplay !== "none" || stripProof.allCharactersPressed !== "false" || stripProof.names.some((item) => item.right > item.parentRight + 1)) throw new Error(`Character chips leaked or an extra Clear Character control is visible: ${JSON.stringify(stripProof)}`);
+        await page.locator(".library-all-characters").click();
+        await page.screenshot({ path: path.join(outputDir, "mobile-v3-library-polish-character-strip-393.png"), animations: "disabled" });
+
+        await page.locator(".library-mobile-controls .library-multi-toggle").click();
+        await page.locator(".library-tile").first().evaluate((node) => node.click());
+        const tray = page.locator(".library-bulk-bar");
+        const trayGeometry = await tray.evaluate((node) => ({ ...node.getBoundingClientRect().toJSON(), dockTop: document.querySelector(".mobile-bottom-dock").getBoundingClientRect().top, labels: [...node.querySelectorAll("button")].map((button) => button.getAttribute("aria-label")) }));
+        if (!await tray.isVisible() || trayGeometry.height > 80 || trayGeometry.bottom > trayGeometry.dockTop + 1 || !["Favorite", "Remove Favorite", "Add as Reference"].every((name) => trayGeometry.labels.includes(name))) throw new Error(`Compact bulk tray layout/action contract failed: ${JSON.stringify(trayGeometry)}`);
+        await page.screenshot({ path: path.join(outputDir, "mobile-v3-library-polish-select-393.png"), animations: "disabled" });
+        await expectNoPageOverflow("bulk selection");
+        console.log(`Mobile Library polish QA passed ${JSON.stringify({ viewport: width, layout, failureProof, coverProof, stripProof, trayGeometry })}`);
+      }
     }
 
     if (process.argv.includes("--reels-immersive") && target === "/reels") {
