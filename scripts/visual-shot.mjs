@@ -7,13 +7,23 @@ import { chromium } from "playwright";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const target = process.argv[2] ?? "/";
-const widths = process.argv.includes("--all")
-  ? [360, 393, 430, 768, 1024, 1440, 1680]
-  : [Number(process.argv[3] ?? 393)];
+const referenceCaptures = [
+  { width: 1440, height: 960, name: "home-v2-desktop-1440", liveName: "home-v2-live-1440" },
+  { width: 1680, height: 1050, name: "home-v2-desktop-1680", liveName: "home-v2-live-1680" },
+  { width: 393, height: 852, name: "home-v2-mobile-393" },
+];
+const captures = process.argv.includes("--home-v2")
+  ? referenceCaptures
+  : (process.argv.includes("--all") ? [360, 393, 430, 768, 1024, 1440, 1680] : [Number(process.argv[3] ?? 393)])
+    .map((width) => ({ width, height: width < 768 ? 852 : 960 }));
 const outputDir = path.join(root, ".artifacts", "visual");
 const portArg = process.argv.find((arg) => arg.startsWith("--port="));
 const port = Number(portArg?.split("=")[1] ?? 3210);
-const baseUrl = `http://127.0.0.1:${port}`;
+const hostnameArg = process.argv.find((arg) => arg.startsWith("--hostname="));
+const hostname = hostnameArg?.split("=")[1] ?? "127.0.0.1";
+const urlHostArg = process.argv.find((arg) => arg.startsWith("--url-host="));
+const urlHost = urlHostArg?.split("=")[1] ?? "127.0.0.1";
+const baseUrl = `http://${urlHost}:${port}`;
 const expectedCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
 
 async function currentWorktreeId() {
@@ -48,12 +58,12 @@ async function waitForOwnedApp(child, worktreeId) {
 }
 
 const worktreeId = await currentWorktreeId();
-const child = spawn(process.execPath, [path.join(root, "node_modules", "next", "dist", "bin", "next"), "dev", "--hostname", "127.0.0.1", "--port", String(port)], {
+const child = spawn(process.execPath, [path.join(root, "node_modules", "next", "dist", "bin", "next"), "dev", "--hostname", hostname, "--port", String(port)], {
   cwd: root,
   detached: process.platform === "win32",
   stdio: "ignore",
   windowsHide: true,
-  env: { ...process.env, FLEX_SCENES_QA_WORKTREE_ID: worktreeId },
+  env: { ...process.env, FLEX_SCENES_QA_WORKTREE_ID: worktreeId, ...(hostname === "0.0.0.0" ? { FLEX_SCENES_LAN_IP: urlHost } : {}) },
 });
 
 let browser;
@@ -67,9 +77,10 @@ try {
     }
   }
   browser = await chromium.launch({ headless: true });
-  for (const width of widths) {
+  for (const capture of captures) {
+    const { width, height } = capture;
     const page = await browser.newPage({
-      viewport: { width, height: width < 768 ? 852 : 960 },
+      viewport: { width, height },
       deviceScaleFactor: width < 768 ? 2 : 1,
       isMobile: width < 768,
       hasTouch: width <= 768,
@@ -85,11 +96,10 @@ try {
     const brokenImages = await page.evaluate(() => Array.from(document.images).filter((img) => img.complete && img.naturalWidth === 0).map((img) => img.currentSrc || img.src));
     if (brokenImages.length) throw new Error(`Broken images at ${width}px: ${brokenImages.join(", ")}`);
     if (target === "/") {
-      if (await page.locator('[data-ui-v2="home"]').count() !== 1) throw new Error("Current UI V2 Home marker missing from rendered page");
-      if (await page.locator(".home-creative-actions").count()) throw new Error("Dashboard-style creative text actions remain visible in Home feed");
+      if (await page.locator('[data-home-architecture="dedicated"]').count() !== 1) throw new Error("Dedicated Home V2 architecture missing from rendered route");
       if (width < 768 && await page.getByRole("navigation", { name: "Main navigation" }).locator("button").count() !== 5) throw new Error("Mobile navigation must contain five actions");
-      if (width >= 768 && !(await page.locator(".app-desktop-nav").isVisible())) throw new Error("Desktop navigation did not render");
-      if (width >= 1280 && (await page.locator(".home-character-card").count() !== 1 || await page.locator(".home-recent-messages").count() !== 1)) throw new Error("Desktop Home character and message context rail did not render");
+      if (width >= 768 && (!(await page.locator(".home-v2-left-nav").isVisible()) || !(await page.locator(".home-v2-right-rail").isVisible()))) throw new Error("Dedicated desktop Home rails did not render");
+      if (await page.locator(".home-v2-right-rail .home-v2-character-card").count() > 1) throw new Error("Unexpected duplicate Home character card");
     }
     const metrics = await page.evaluate(() => {
       const rect = (selector) => {
@@ -98,11 +108,16 @@ try {
         const box = node.getBoundingClientRect();
         return { width: Math.round(box.width), height: Math.round(box.height), left: Math.round(box.left), top: Math.round(box.top) };
       };
-      return { viewport: innerWidth, document: document.documentElement.scrollWidth, header: rect(".app-header"), storyRing: rect(".home-story-ring"), media: rect(".home-post-media"), create: rect(".bottom-nav-create .bottom-nav-icon"), homeMarker: !!document.querySelector('[data-ui-v2="home"]') };
+      const mobile = innerWidth < 768;
+      const surface = mobile ? ".home-v2-mobile" : ".home-v2-desktop";
+      const rightRail = document.querySelector(".home-v2-right-rail");
+      return { viewport: innerWidth, document: document.documentElement.scrollWidth, header: rect(mobile ? ".home-v2-mobile-header" : ".home-v2-top-actions"), storyRing: rect(surface + " .home-v2-story-ring"), media: rect(surface + " .home-v2-media"), create: rect(".home-v2-mobile-nav .is-create > span"), rightRail: rect(".home-v2-right-rail"), rightRailDisplay: rightRail ? getComputedStyle(rightRail).display : null, contextChildren: rightRail?.children.length ?? 0, homeMarker: !!document.querySelector('[data-ui-v2="home"]') };
     });
     if (metrics.document > metrics.viewport + 1) throw new Error(`Horizontal overflow at ${width}px: ${metrics.document}px document / ${metrics.viewport}px viewport`);
     if (target === "/" && width === 393 && (!metrics.media || metrics.media.width < 0.95 * metrics.viewport)) throw new Error(`Home media is not edge-to-edge enough: ${JSON.stringify(metrics.media)}`);
-    const name = target === "/" ? `home${process.argv.includes("--live") ? "-live" : ""}-${width}` : `${target.replace(/^\/+|\/+$/g, "").replaceAll("/", "-") || "home"}-${width}`;
+    const name = capture.name
+      ? (process.argv.includes("--live") ? (capture.liveName ?? `${capture.name}-live`) : capture.name)
+      : (target === "/" ? `home${process.argv.includes("--live") ? "-live" : ""}-${width}` : `${target.replace(/^\/+|\/+$/g, "").replaceAll("/", "-") || "home"}-${width}`);
     const output = path.join(outputDir, `${name}.png`);
     await page.screenshot({ path: output, animations: "disabled" });
     console.log(`${output} ${JSON.stringify(metrics)}`);
@@ -115,16 +130,26 @@ try {
       console.log("Home media to Create Studio handoff passed");
     }
     if (process.argv.includes("--smoke") && target === "/" && width >= 1280) {
-      const messageAction = page.locator(".home-character-message");
+      const messageAction = page.locator(".home-v2-message-cta");
       const characterName = await messageAction.innerText();
       await messageAction.click();
       await page.waitForTimeout(150);
       if (new URL(page.url()).pathname !== "/messages") throw new Error("Desktop character card did not open Messages");
       await page.goto(new URL("/", baseUrl).toString(), { waitUntil: "domcontentloaded" });
-      await page.locator(".home-character-identity").click();
+      await page.locator(".home-v2-character-identity").click();
       await page.waitForTimeout(150);
       if (new URL(page.url()).pathname !== "/character") throw new Error("Desktop character card did not open Character Hub");
       console.log(`Desktop Home context actions passed (${characterName.trim()})`);
+    }
+    await page.close();
+  }
+  if (process.argv.includes("--routes")) {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
+    for (const route of ["/", "/messages", "/create", "/character", "/library", "/reels", "/explore"]) {
+      const response = await page.goto(new URL(route, baseUrl).toString(), { waitUntil: "domcontentloaded" });
+      if (!response || response.status() !== 200) throw new Error(`${route} returned HTTP ${response?.status() ?? "no response"}`);
+      await page.waitForTimeout(180);
+      console.log(`Route smoke passed: ${route} HTTP ${response.status()}`);
     }
     await page.close();
   }

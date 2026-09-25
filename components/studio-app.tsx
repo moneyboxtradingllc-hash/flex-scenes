@@ -9,7 +9,7 @@ import type {
   MediaAsset,
   CharacterReference,
 } from "@/lib/domain";
-import { PremiumHome } from "@/components/home-surface";
+import { HomeV2 } from "@/components/home-v2/home-v2";
 import { PremiumCharacterHub } from "@/components/character-hub-surface";
 import { PremiumCreateStudio } from "@/components/create-studio-surface";
 import { PremiumMessages } from "@/components/messages-surface";
@@ -185,6 +185,33 @@ export function StudioApp({
       </div>
     </header>
   );
+  if (view === "home") {
+    return <HomeV2
+      data={data}
+      character={active}
+      navigate={(destination) => go(destination)}
+      openConversation={openConversation}
+      setCharacter={setActiveCharacter}
+      select={setSelected}
+      favorite={favorite}
+      reference={reference}
+      create={(asset, mode) => createFrom(asset, undefined, asset?.characterId, mode)}
+      detail={selected ? <PremiumMediaDetail
+        key={selected.id}
+        data={data}
+        asset={selected}
+        character={data.characters.find((c) => c.id === selected.characterId)}
+        close={() => setSelected(null)}
+        favorite={favorite}
+        onUseReference={async (asset) => { await reference(asset.id); setSelected(null); createFrom(asset, undefined, asset.characterId, asset.type === "video" ? "video" : "image"); }}
+        remix={(asset) => { setSelected(null); createFrom(asset, undefined, asset.characterId, asset.type === "video" ? "video" : "image"); }}
+        animate={(asset) => { setSelected(null); createFrom(asset, undefined, asset.characterId, "video"); }}
+        select={setSelected}
+        refresh={refresh}
+        openCharacter={(id) => { setSelected(null); setActiveCharacter(id); go("character"); }}
+      /> : null}
+    />;
+  }
   return (
     <main className={`studio-shell mx-auto min-h-screen max-w-[1680px] bg-[#08090d] pb-20 text-zinc-100 md:grid md:grid-cols-[220px_minmax(0,1fr)] ${view === "home" ? "is-home-view" : ""} ${isWideArchive ? "xl:grid-cols-[220px_minmax(0,1fr)]" : "xl:grid-cols-[220px_minmax(0,1fr)_300px]"} md:pb-0`}>
       <aside className="app-desktop-nav hidden border-r border-white/8 bg-[#0c0d12] p-5 md:block">
@@ -237,17 +264,6 @@ export function StudioApp({
       <section className="min-w-0 border-x border-white/5">
         {header}
         <div className={`studio-page-content mx-auto w-full ${view === "home" ? "home-page-content" : ""} ${isWideArchive ? "max-w-none" : "max-w-[900px]"} p-4 md:p-7`}>
-          {view === "home" && (
-            <Home
-              data={data}
-              go={go}
-              select={setSelected}
-              favorite={favorite}
-              reference={reference}
-              create={(asset, mode) => createFrom(asset, undefined, asset?.characterId, mode)}
-              setCharacter={setActiveCharacter}
-            />
-          )}{" "}
           {view === "explore" && <PremiumExplore data={data} select={setSelected} openCharacter={(id) => { setActiveCharacter(id); go("character"); }} create={createFrom} />}{" "}
           {view === "create" && (
             <CapabilityCreate
@@ -505,35 +521,6 @@ function NavButton({
       <span className="desktop-nav-icon"><UiIcon name={id as "home" | "explore" | "create" | "reels" | "messages" | "library" | "jobs" | "collections"} /></span>
       <span>{label}</span>
     </button>
-  );
-}
-function Home({
-  data,
-  go,
-  select,
-  favorite,
-  reference,
-  create,
-  setCharacter,
-}: {
-  data: AppSnapshot;
-  go: (x: View) => void;
-  select: (x: MediaAsset) => void;
-  favorite: (id: string) => void;
-  reference: (id: string) => void;
-  create: (x?: MediaAsset, mode?: "image" | "video") => void;
-  setCharacter: (id: string) => void;
-}) {
-  return (
-    <PremiumHome
-      data={data}
-      select={select}
-      favorite={favorite}
-      reference={reference}
-      create={create}
-      setCharacter={setCharacter}
-      openCharacter={() => go("character")}
-    />
   );
 }
 function FeedCard({
