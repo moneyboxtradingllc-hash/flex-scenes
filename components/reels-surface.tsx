@@ -23,6 +23,7 @@ function Icon({ name, className = "" }: { name: string; className?: string }) {
     close: "m18 6-12 12M6 6l12 12",
     down: "m7 10 5 5 5-5",
     filter: "M4 7h16M7 12h10m-7 5h4M6 7a1 1 0 1 0 0 .01M17 12a1 1 0 1 0 0 .01M10 17a1 1 0 1 0 0 .01",
+    back: "m15 18-6-6 6-6M20 12H9",
   };
   return <svg aria-hidden="true" viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={paths[name]} /></svg>;
 }
@@ -33,6 +34,8 @@ export function PremiumReels({
   favorite,
   reference,
   create,
+  onBack,
+  openCharacterConversation,
   openCharacter,
 }: {
   data: AppSnapshot;
@@ -40,6 +43,8 @@ export function PremiumReels({
   favorite: (id: string) => void;
   reference: (id: string) => void;
   create: (asset: MediaAsset, conversationId?: string, characterId?: string, mode?: "image" | "video") => void;
+  onBack: () => void;
+  openCharacterConversation: (characterId: string) => void;
   openCharacter: (id: string) => void;
 }) {
   const [filter, setFilter] = useState<Filter>("all");
@@ -61,6 +66,7 @@ export function PremiumReels({
   const qaPlaybackEnabled = useSyncExternalStore(subscribeToQaPlayback, getQaPlaybackSnapshot, () => false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const mobileFeedRef = useRef<HTMLDivElement>(null);
+  const topOverlayRef = useRef<HTMLDivElement>(null);
   const activeSlideRef = useRef(0);
   const touchY = useRef<number | null>(null);
   const qaReelAssets = useMemo<MediaAsset[]>(() => {
@@ -133,6 +139,17 @@ export function PremiumReels({
       setProgress(0);
     }, { root, threshold: [0.35, 0.6, 0.8, 1] });
     slides.forEach((slide) => observer.observe(slide));
+    return () => observer.disconnect();
+  }, [isMobileViewport, videos]);
+
+  useEffect(() => {
+    const feed = mobileFeedRef.current;
+    const overlay = topOverlayRef.current;
+    if (!isMobileViewport || !feed || !overlay) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry?.isIntersecting) setFilterSheetOpen(false);
+    }, { root: feed, threshold: 0.01 });
+    observer.observe(overlay);
     return () => observer.disconnect();
   }, [isMobileViewport, videos]);
 
@@ -232,6 +249,7 @@ export function PremiumReels({
 
   if (!item && isMobileViewport) return <>
     <div className="reels-mobile-empty">
+      <div className="reels-mobile-top-overlay"><button className="reels-mobile-back" aria-label="Back to previous screen" onClick={onBack}><Icon name="back" className="h-5 w-5" /></button><button className="reels-mobile-filter" aria-label={`Filter reels, current filter ${filterLabels[filter]}`} onClick={() => setFilterSheetOpen(true)}><Icon name="filter" className="h-5 w-5" /><i data-active-filter={filter !== "all" || undefined} /></button></div>
       <div className="reels-mobile-empty-content">
         <div className="reels-mobile-empty-icon"><Icon name="play" className="h-7 w-7" /></div>
         <p className="reels-mobile-empty-eyebrow">REELS</p>
@@ -240,7 +258,6 @@ export function PremiumReels({
         <button onClick={() => { const image = data.media.find((asset) => asset.type === "image"); if (image) create(image, undefined, image.characterId, "video"); else create(data.media[0], undefined, data.media[0]?.characterId, "video"); }}>Create Video</button>
       </div>
     </div>
-    <div className="reels-mobile-top-overlay"><span>REELS</span><button aria-label={`Filter reels, current filter ${filterLabels[filter]}`} onClick={() => setFilterSheetOpen(true)}><Icon name="filter" className="h-5 w-5" /><i data-active-filter={filter !== "all" || undefined} /></button></div>
     {filterSheetOpen && <div className="reels-mobile-sheet-backdrop" onMouseDown={() => setFilterSheetOpen(false)}><section className="reels-mobile-sheet" role="dialog" aria-modal="true" aria-labelledby="reels-filter-title" onMouseDown={(event) => event.stopPropagation()}><div className="reels-sheet-handle" /><div className="reels-sheet-heading"><h2 id="reels-filter-title">Filter Reels</h2><button aria-label="Close filters" onClick={() => setFilterSheetOpen(false)}><Icon name="close" className="h-5 w-5" /></button></div><div className="reels-filter-options" role="group" aria-label="Reel filters">{(["all", "favorites", "character", "recent"] as Filter[]).map((value) => <button key={value} aria-pressed={filter === value} onClick={() => changeFilter(value)}>{filterLabels[value]}{filter === value && <span aria-hidden="true">✓</span>}</button>)}</div>{filter === "character" && <label className="reels-character-picker">Character<select value={characterId} onChange={(event) => changeCharacter(event.target.value)}><option value="">Every character</option>{data.characters.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></label>}</section></div>}
   </>;
 
@@ -284,6 +301,12 @@ export function PremiumReels({
             parent={assetParent}
             videoRef={active ? videoRef : undefined}
             qaFixture={asset.id.startsWith("dev-qa-reel-")}
+            firstSlide={slideIndex === 0}
+            topOverlayRef={slideIndex === 0 ? topOverlayRef : undefined}
+            onBack={onBack}
+            onFilter={() => setFilterSheetOpen(true)}
+            filterActive={filter !== "all"}
+            onMessage={() => assetCharacter && openCharacterConversation(assetCharacter.id)}
             onPlay={() => { if (activeSlideRef.current === slideIndex) setPlaying(true); }}
             onPause={() => { if (activeSlideRef.current === slideIndex) setPlaying(false); }}
             onLoaded={() => { if (activeSlideRef.current === slideIndex) { setLoaded(true); setPlaying(true); } }}
@@ -301,14 +324,6 @@ export function PremiumReels({
             toggleCaption={() => setCaptionExpanded((current) => !current)}
           />;
         })}
-      </div>
-
-      <div className="reels-mobile-top-overlay">
-        <span>REELS{qaPlaybackEnabled && <small className="reels-local-qa-label">LOCAL QA</small>}</span>
-        <button aria-label={`Filter reels, current filter ${filterLabels[filter]}`} onClick={() => setFilterSheetOpen(true)}>
-          <Icon name="filter" className="h-5 w-5" />
-          <i data-active-filter={filter !== "all" || undefined} />
-        </button>
       </div>
 
       {filterSheetOpen && <div className="reels-mobile-sheet-backdrop" onMouseDown={() => setFilterSheetOpen(false)}>
@@ -408,7 +423,7 @@ export function PremiumReels({
   );
 }
 
-function MobileReelSlide({ asset, index, active, playable, playing, loaded, ended, progress, character, parent, videoRef, onPlay, onPause, onLoaded, onEnded, onProgress, onSeek, onToggle, onFavorite, onNotes, onRemix, onReference, onMore, onOpenCharacter, captionExpanded, toggleCaption, qaFixture }: {
+function MobileReelSlide({ asset, index, active, playable, playing, loaded, ended, progress, character, parent, videoRef, onPlay, onPause, onLoaded, onEnded, onProgress, onSeek, onToggle, onFavorite, onNotes, onRemix, onReference, onMore, onOpenCharacter, captionExpanded, toggleCaption, qaFixture, firstSlide, topOverlayRef, onBack, onFilter, filterActive, onMessage }: {
   asset: MediaAsset;
   index: number;
   active: boolean;
@@ -436,6 +451,12 @@ function MobileReelSlide({ asset, index, active, playable, playing, loaded, ende
   captionExpanded: boolean;
   toggleCaption: () => void;
   qaFixture: boolean;
+  firstSlide: boolean;
+  topOverlayRef?: RefObject<HTMLDivElement | null>;
+  onBack: () => void;
+  onFilter: () => void;
+  filterActive: boolean;
+  onMessage: () => void;
 }) {
   const [landscape, setLandscape] = useState(false);
   const poster = asset.posterUrl || (!playable ? asset.url : undefined);
@@ -453,6 +474,10 @@ function MobileReelSlide({ asset, index, active, playable, playing, loaded, ende
 
       <div className="reels-mobile-top-gradient" />
       <div className="reels-mobile-bottom-gradient" />
+      {firstSlide && <div className="reels-mobile-top-overlay" ref={topOverlayRef}>
+        <button className="reels-mobile-back" aria-label="Back to previous screen" onClick={onBack}><Icon name="back" className="h-5 w-5" /></button>
+        <button className="reels-mobile-filter" aria-label="Filter Reels" onClick={onFilter}><Icon name="filter" className="h-5 w-5" /><i data-active-filter={filterActive || undefined} /></button>
+      </div>}
       {qaFixture && <span className="reels-mobile-preview-badge reels-mobile-qa-badge">Local QA</span>}
       {!playable && <span className="reels-mobile-preview-badge">Preview</span>}
 
@@ -472,8 +497,12 @@ function MobileReelSlide({ asset, index, active, playable, playing, loaded, ende
         <ActionButton label="Notes" icon="note" onClick={onNotes} showLabel disabled={qaFixture} />
         <ActionButton label={playable ? "Remix" : "Create"} icon="remix" primary onClick={onRemix} showLabel disabled={qaFixture} />
         <ActionButton label={asset.isReference ? "Remove reference" : "Use as reference"} visibleLabel={asset.isReference ? "Ref ✓" : "Ref"} icon="reference" active={asset.isReference} onClick={onReference} showLabel disabled={qaFixture} />
-        <ActionButton label="More" icon="more" onClick={onMore} showLabel disabled={qaFixture} />
+        <ActionButton label="More" icon="more" onClick={onMore} showLabel />
       </div>
+      <button className="reels-mobile-message-strip" onClick={onMessage} disabled={!character} aria-label={character ? `Message ${character.name}` : "React to this Reel"}>
+        <span>{character ? `Message ${character.name}…` : "React to this Reel…"}</span>
+        <span className="reels-mobile-message-send" aria-hidden="true">↗</span>
+      </button>
     </div>
   </article>;
 }

@@ -1,7 +1,7 @@
 // This dense presentational client surface is covered by domain/service tests; UI action types are intentionally permissive.
 // @ts-nocheck
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   AppSnapshot,
   GenerationInput,
@@ -75,6 +75,7 @@ export function StudioApp({
       ? "character"
       : (route.split("/")[0] as View) || "home",
   );
+  const previousView = useRef<View>("home");
   const [activeCharacter, setActiveCharacter] = useState(
     initial.characters[0]?.id,
   );
@@ -104,6 +105,7 @@ export function StudioApp({
     setSelected((current) => current ? next.media.find((asset) => asset.id === current.id) ?? current : null);
   };
   const go = (next: View, context?: typeof createContext) => {
+    if (next !== view) previousView.current = view;
     setView(next);
     if (context) setCreateContext(context);
     window.history.pushState({}, "", next === "home" ? "/" : `/${next}`);
@@ -283,6 +285,12 @@ export function StudioApp({
               favorite={favorite}
               reference={reference}
               create={createFrom}
+              onBack={() => go(previousView.current === "reels" ? "home" : previousView.current)}
+              openCharacterConversation={(characterId) => {
+                const conversation = data.conversations.find((entry) => entry.characterId === characterId);
+                if (conversation) openConversation(conversation.id);
+                else { setActiveCharacter(characterId); go("messages"); }
+              }}
               openCharacter={(id) => { setActiveCharacter(id); go("character"); }}
             />
           )}{" "}

@@ -43,6 +43,11 @@ const reelsV3Captures = [
   { width: 430, height: 932, name: "mobile-v3-reels-430" },
 ];
 const reelsPlaybackQACaptures = [{ width: 393, height: 852, name: "mobile-v3-reels-playing-393" }];
+const reelsImmersiveCaptures = [
+  { width: 390, height: 844, name: "mobile-v3-reels-immersive-390" },
+  { width: 393, height: 852, name: "mobile-v3-reels-immersive-393" },
+  { width: 430, height: 932, name: "mobile-v3-reels-immersive-430" },
+];
 const captures = process.argv.includes("--home-v2")
   ? referenceCaptures
   : process.argv.includes("--desktop-v3")
@@ -53,6 +58,8 @@ const captures = process.argv.includes("--home-v2")
     ? exploreV3Captures
   : process.argv.includes("--reels-v3")
     ? reelsV3Captures
+  : process.argv.includes("--reels-immersive")
+    ? reelsImmersiveCaptures
   : process.argv.includes("--reels-playback-qa")
     ? reelsPlaybackQACaptures
   : process.argv.includes("--mobile-v3")
@@ -137,7 +144,7 @@ try {
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
-    if (process.argv.includes("--reels-playback-qa") && target === "/reels") {
+    if ((process.argv.includes("--reels-playback-qa") || process.argv.includes("--reels-immersive")) && target === "/reels") {
       await page.route("**/api/qa/reel-playback-fixture.mp4**", async (route) => {
         if (route.request().headers().range === "bytes=0-31") return route.continue();
         await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -145,7 +152,7 @@ try {
       });
     }
     const pageUrl = new URL(target, baseUrl);
-    if (process.argv.includes("--reels-playback-qa") && target === "/reels") pageUrl.searchParams.set("qaPlayback", "1");
+    if ((process.argv.includes("--reels-playback-qa") || process.argv.includes("--reels-immersive")) && target === "/reels") pageUrl.searchParams.set("qaPlayback", "1");
     await page.goto(pageUrl.toString(), { waitUntil: "domcontentloaded" });
     await page.evaluate(() => document.fonts.ready);
     await page.waitForTimeout(1300);
@@ -267,6 +274,12 @@ try {
       ? (process.argv.includes("--live") ? (capture.liveName ?? `${capture.name}-live`) : capture.name)
       : (target === "/" ? `home${process.argv.includes("--live") ? "-live" : ""}-${width}` : `${target.replace(/^\/+|\/+$/g, "").replaceAll("/", "-") || "home"}-${width}`);
     const output = path.join(outputDir, `${name}.png`);
+    if (process.argv.includes("--reels-immersive") && target === "/reels") {
+      await page.waitForFunction(() => {
+        const video = document.querySelector('[data-reel-slide][data-active="true"] video');
+        return video && video.readyState >= 2 && !video.paused && video.currentTime > 0.35 && !document.querySelector(".reels-mobile-loading");
+      }, { timeout: 10000 });
+    }
     await page.screenshot({ path: output, animations: "disabled" });
     console.log(`${output} ${JSON.stringify(metrics)}`);
     if (process.argv.includes("--explore-v3") && target === "/explore" && width === 393) {
@@ -446,7 +459,7 @@ try {
         return { status: response.status, type: response.headers.get("content-type"), range: response.headers.get("content-range"), bytes: (await response.arrayBuffer()).byteLength };
       });
       if (fixtureResponse.status !== 206 || fixtureResponse.type !== "video/mp4" || fixtureResponse.bytes !== 32 || !fixtureResponse.range?.startsWith("bytes 0-31/")) throw new Error(`Development fixture route did not support MP4 byte ranges: ${JSON.stringify(fixtureResponse)}`);
-      if (!(await page.getByText("LOCAL QA", { exact: true }).isVisible())) throw new Error("Development playback fixture is not labeled Local QA");
+      if (!(await page.locator(".reels-mobile-qa-badge").first().isVisible())) throw new Error("Development playback fixture is not labeled Local QA");
       const initial = await page.evaluate(() => ({
         slideCount: document.querySelectorAll("[data-reel-slide]").length,
         mountedVideos: document.querySelectorAll("[data-reel-slide] video").length,
@@ -467,11 +480,12 @@ try {
       const afterMetadataBox = await activeSlide.evaluate((node) => { const { x, y, width, height } = node.getBoundingClientRect(); return { x, y, width, height }; });
       if (JSON.stringify(beforeMetadataBox) !== JSON.stringify(afterMetadataBox)) throw new Error(`Video metadata caused a Reel layout shift: ${JSON.stringify({ beforeMetadataBox, afterMetadataBox })}`);
       const firstOverlay = await page.evaluate(() => ({
-        dockTop: document.querySelector(".mobile-bottom-dock")?.getBoundingClientRect().top ?? null,
+        sharedDockVisible: [...document.querySelectorAll(".mobile-bottom-dock,nav.app-bottom-nav")].some((node) => getComputedStyle(node).display !== "none" && node.getClientRects().length > 0),
         railBottom: document.querySelector('[data-reel-slide][data-active="true"] .reels-mobile-rail')?.getBoundingClientRect().bottom ?? null,
+        messageTop: document.querySelector('[data-reel-slide][data-active="true"] .reels-mobile-message-strip')?.getBoundingClientRect().top ?? null,
         allVideos: document.querySelectorAll("[data-reel-slide] video").length,
       }));
-      if (firstOverlay.dockTop === null || firstOverlay.railBottom === null || firstOverlay.railBottom > firstOverlay.dockTop || firstOverlay.allVideos !== 1) throw new Error(`The action rail overlaps the dock or multiple video elements are mounted: ${JSON.stringify(firstOverlay)}`);
+      if (firstOverlay.sharedDockVisible || firstOverlay.railBottom === null || firstOverlay.messageTop === null || firstOverlay.railBottom > firstOverlay.messageTop || firstOverlay.allVideos !== 1) throw new Error(`The immersive action rail overlaps the interaction strip, shared dock remains visible, or multiple videos are mounted: ${JSON.stringify(firstOverlay)}`);
       await page.screenshot({ path: path.join(outputDir, "mobile-v3-reels-playing-393.png"), animations: "disabled" });
 
       await page.mouse.move(192, 690);
@@ -539,6 +553,88 @@ try {
       console.log(`Real local video playback passed ${JSON.stringify({ fixture: firstMetrics, second: secondMetrics, resumed, seekPosition, ended, range: fixtureResponse, overlay: firstOverlay })}`);
     }
 
+    if (process.argv.includes("--reels-immersive") && target === "/reels") {
+      const feed = page.locator("[data-reels-mobile-feed]");
+      const firstOverlay = page.locator('[data-reel-slide][data-reel-index="0"] .reels-mobile-top-overlay');
+      const assertOverlayVisible = async (expected, stage) => {
+        const rect = await firstOverlay.evaluate((node) => ({ ...node.getBoundingClientRect().toJSON(), viewport: innerHeight }));
+        const visible = rect.bottom > 0 && rect.top < rect.viewport;
+        if (visible !== expected) throw new Error(`Reels first-slide top overlay visibility at ${stage}: ${JSON.stringify({ expected, rect })}`);
+      };
+      const overflow = await page.evaluate(() => ({ viewport: innerWidth, document: document.documentElement.scrollWidth, body: document.body.scrollWidth }));
+      if (overflow.document > overflow.viewport + 1 || overflow.body > overflow.viewport + 1) throw new Error(`Immersive Reels horizontal overflow: ${JSON.stringify(overflow)}`);
+      if (await page.locator(".mobile-top-bar:visible,.mobile-bottom-dock:visible,nav.app-bottom-nav:visible").count()) throw new Error("Shared mobile top bar or bottom navigation is visible on Reels");
+      const firstSlide = page.locator('[data-reel-slide][data-reel-index="0"]');
+      const fullScreen = await firstSlide.evaluate((node) => ({ height: node.getBoundingClientRect().height, viewport: innerHeight }));
+      if (fullScreen.height !== fullScreen.viewport) throw new Error(`Immersive Reel does not fill the viewport: ${JSON.stringify(fullScreen)}`);
+      if (await firstOverlay.evaluate((node) => getComputedStyle(node).position) !== "absolute") throw new Error("Reels top controls are not anchored in normal first-slide flow");
+      await assertOverlayVisible(true, "feed top");
+      if (await firstSlide.locator("video").count() !== 1 || await page.locator("[data-reel-slide] video").count() !== 1) throw new Error("QA mode should mount only the active Reel video");
+      const video = firstSlide.locator("video");
+      await page.waitForFunction(() => {
+        const current = document.querySelector('[data-reel-slide][data-active="true"] video');
+        return current && current.readyState >= 2 && !current.paused && current.muted;
+      }, { timeout: 10000 });
+      if (width === 393) {
+        await page.screenshot({ path: path.join(outputDir, "mobile-v3-reels-immersive-playing-393.png"), animations: "disabled" });
+        await video.click({ position: { x: 175, y: 350 } });
+        await page.waitForFunction(() => document.querySelector('[data-reel-slide][data-active="true"] video')?.paused === true);
+        await page.screenshot({ path: path.join(outputDir, "mobile-v3-reels-immersive-paused-393.png"), animations: "disabled" });
+        await page.getByRole("button", { name: "Play reel" }).click();
+        await page.waitForFunction(() => { const current = document.querySelector('[data-reel-slide][data-active="true"] video'); return current && !current.paused; });
+      }
+      let railGeometry;
+      if (width === 393) {
+        railGeometry = await firstSlide.evaluate((node) => {
+          const rail = node.querySelector(".reels-mobile-rail").getBoundingClientRect();
+          const identity = node.querySelector(".reels-mobile-identity").getBoundingClientRect();
+          const strip = node.querySelector(".reels-mobile-message-strip").getBoundingClientRect();
+          return { railBottom: rail.bottom, stripTop: strip.top, identityRight: identity.right, railLeft: rail.left };
+        });
+        if (railGeometry.railBottom > railGeometry.stripTop || railGeometry.identityRight > railGeometry.railLeft) throw new Error(`Reel actions, identity, and message strip overlap: ${JSON.stringify(railGeometry)}`);
+        await firstSlide.getByRole("button", { name: "More", exact: true }).click();
+        if (!(await page.getByRole("dialog", { name: "Reel details" }).isVisible())) throw new Error("Reels More sheet did not open above the immersive video");
+        await page.screenshot({ path: path.join(outputDir, "mobile-v3-reels-immersive-more-393.png"), animations: "disabled" });
+        await page.mouse.click(190, 260);
+        await page.waitForTimeout(100);
+        await page.getByRole("button", { name: "Filter Reels" }).click();
+        if (!(await page.getByRole("dialog", { name: "Filter Reels" }).isVisible())) throw new Error("Reels filter sheet did not open");
+        await page.getByRole("button", { name: "Close filters" }).click();
+      }
+
+      await feed.evaluate((node) => node.scrollTo({ top: innerHeight, behavior: "instant" }));
+      await page.waitForFunction(() => document.querySelector('[data-reel-slide][data-active="true"]')?.getAttribute("data-reel-index") === "1", { timeout: 5000 });
+      await assertOverlayVisible(false, "one Reel down");
+      if (width === 393) await page.screenshot({ path: path.join(outputDir, "mobile-v3-reels-immersive-scrolled-393.png"), animations: "disabled" });
+      await feed.evaluate((node) => node.scrollTo({ top: innerHeight * 2, behavior: "instant" }));
+      await page.waitForTimeout(80);
+      await assertOverlayVisible(false, "several Reels down");
+      await feed.evaluate((node) => node.scrollTo({ top: innerHeight * 2 - 80, behavior: "instant" }));
+      await page.waitForTimeout(80);
+      await assertOverlayVisible(false, "small upward scroll mid-feed");
+      await feed.evaluate((node) => node.scrollTo({ top: innerHeight * 0.6, behavior: "instant" }));
+      await page.waitForTimeout(80);
+      await assertOverlayVisible(false, "partial return toward Reel 1");
+      await feed.evaluate((node) => node.scrollTo({ top: 0, behavior: "instant" }));
+      await page.waitForTimeout(100);
+      await assertOverlayVisible(true, "absolute feed top");
+      if (width === 393) {
+        await firstOverlay.getByRole("button", { name: "Filter Reels" }).click();
+        await feed.evaluate((node) => node.scrollTo({ top: innerHeight, behavior: "instant" }));
+        await page.waitForFunction(() => !document.querySelector('[role="dialog"][aria-labelledby="reels-filter-title"]'));
+        await assertOverlayVisible(false, "filter sheet closes when its anchor leaves");
+        await feed.evaluate((node) => node.scrollTo({ top: 0, behavior: "instant" }));
+        await page.waitForTimeout(80);
+        await page.getByRole("button", { name: "Back to previous screen" }).click();
+        await page.waitForFunction(() => document.querySelector('[data-home-architecture="dedicated"]') !== null);
+        await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Reels" }).click();
+        await page.waitForSelector("[data-reels-mobile-feed]");
+        await page.locator('[data-reel-slide][data-active="true"]').getByRole("button", { name: /^Message / }).click();
+        await page.waitForFunction(() => location.pathname === "/messages" && document.querySelector(".mobile-thread-active"));
+      }
+      console.log(`Immersive Reels QA passed ${JSON.stringify({ viewport: width, fullScreen, railGeometry: width === 393 ? railGeometry : undefined, overlay: "first-slide flow; hidden until absolute top" })}`);
+    }
+
     if (process.argv.includes("--reels-v3") && target === "/reels" && width === 393) {
       const feed = page.locator("[data-reels-mobile-feed]");
       const dock = page.getByRole("navigation", { name: "Main navigation" });
@@ -548,7 +644,7 @@ try {
         const size = await page.evaluate(() => ({ viewport: innerWidth, document: document.documentElement.scrollWidth, body: document.body.scrollWidth }));
         if (size.document > size.viewport + 1 || size.body > size.viewport + 1) throw new Error(`Mobile Reels overflow at ${stage}: ${JSON.stringify(size)}`);
       };
-      if (!(await feed.count()) || !(await dock.isVisible()) || !(await dock.getByRole("button", { name: "Reels" }).getAttribute("aria-current"))) throw new Error("Mobile Reels feed or active floating dock item did not render");
+      if (!(await feed.count()) || await dock.isVisible()) throw new Error("Mobile Reels feed did not render in immersive mode without the shared app dock");
       if (await page.locator(".mobile-top-layer").count() || await page.locator(".reels-toolbar").isVisible()) throw new Error("The shared mobile top bar or desktop toolbar appeared on Reels");
       const initial = await page.evaluate(() => {
         const feedNode = document.querySelector("[data-reels-mobile-feed]");
@@ -559,12 +655,12 @@ try {
       if (initial.activeVideos > 1) throw new Error(`More than one active video is mounted: ${initial.activeVideos}`);
       await noOverflow("initial Reel");
 
-      await page.getByRole("button", { name: /Filter reels/ }).click();
+      await page.getByRole("button", { name: /Filter Reels/ }).click();
       const filterSheet = page.getByRole("dialog", { name: "Filter Reels" });
       if (!(await filterSheet.isVisible())) throw new Error("Reel filter sheet did not open");
       await page.screenshot({ path: path.join(outputDir, "mobile-v3-reels-filter-393.png"), animations: "disabled" });
       for (const label of ["Favorites", "Recent", "Character"]) {
-        if (!(await filterSheet.isVisible())) await page.getByRole("button", { name: /Filter reels/ }).click();
+        if (!(await filterSheet.isVisible())) await page.getByRole("button", { name: /Filter Reels/ }).click();
         await filterSheet.getByRole("button", { name: label }).click();
         await page.waitForTimeout(120);
         if (label === "Character") {
@@ -575,7 +671,7 @@ try {
         }
       }
       await filterSheet.getByRole("button", { name: /Close filters/ }).click();
-      await page.getByRole("button", { name: /Filter reels/ }).click();
+      await page.getByRole("button", { name: /Filter Reels/ }).click();
       await filterSheet.getByRole("button", { name: "All Videos" }).click();
       if (await page.getByRole("dialog", { name: "Filter Reels" }).count()) throw new Error("Choosing a Reel filter did not close the sheet");
 
@@ -719,12 +815,15 @@ try {
       if (await page.locator("#mobile-app-menu").count()) throw new Error("Outside tap did not close the mobile app menu");
 
       const dock = page.getByRole("navigation", { name: "Main navigation" });
-      for (const [label, pathname, dockVisible] of [["Explore", "/explore", true], ["Reels", "/reels", true], ["Library", "/library", true], ["Create a scene", "/create", false]]) {
+      for (const [label, pathname, dockVisible] of [["Explore", "/explore", true], ["Reels", "/reels", false], ["Library", "/library", true], ["Create a scene", "/create", false]]) {
         await dock.getByRole("button", { name: label }).click();
         await page.waitForTimeout(130);
         if (new URL(page.url()).pathname !== pathname) throw new Error(`Mobile dock ${label} action did not navigate to ${pathname}`);
         if ((await dock.isVisible()) !== dockVisible) throw new Error(`Mobile dock visibility was incorrect on ${pathname}`);
-        if (!dockVisible) {
+        if (pathname === "/reels") {
+          await page.getByRole("button", { name: "Back to previous screen" }).click();
+          await page.waitForFunction(() => location.pathname === "/explore" && document.querySelector(".explore-surface") !== null);
+        } else if (!dockVisible) {
           await page.getByRole("button", { name: "Open Flex Scenes menu" }).click();
           await page.locator("#mobile-app-menu").getByRole("button", { name: "Home" }).click();
         }
