@@ -7,7 +7,7 @@ export function mobileRouteChrome(view: string, options: { messageThread?: boole
   const thread = view === "messages" && options.messageThread === true;
   const hidden = view === "lab";
   return {
-    topBar: !hidden && !thread,
+    topBar: !hidden && !thread && view !== "reels",
     flowTopBar: ["home", "explore"].includes(view),
     bottomDock: !hidden && !focused && !thread && view !== "messages",
     minimalTopBar: ["reels", "create", "progress", "result"].includes(view),

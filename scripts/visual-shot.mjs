@@ -37,6 +37,11 @@ const exploreV3Captures = [
   { width: 393, height: 852, name: "mobile-v3-explore-393" },
   { width: 430, height: 932, name: "mobile-v3-explore-430" },
 ];
+const reelsV3Captures = [
+  { width: 390, height: 844, name: "mobile-v3-reels-390" },
+  { width: 393, height: 852, name: "mobile-v3-reels-393" },
+  { width: 430, height: 932, name: "mobile-v3-reels-430" },
+];
 const captures = process.argv.includes("--home-v2")
   ? referenceCaptures
   : process.argv.includes("--desktop-v3")
@@ -45,6 +50,8 @@ const captures = process.argv.includes("--home-v2")
     ? homeTopbarCapture
   : process.argv.includes("--explore-v3")
     ? exploreV3Captures
+  : process.argv.includes("--reels-v3")
+    ? reelsV3Captures
   : process.argv.includes("--mobile-v3")
     ? mobileV3Captures
   : process.argv.includes("--mobile-home")
@@ -417,6 +424,124 @@ try {
       await page.waitForTimeout(80);
       if (await topBar.evaluate((node) => { const rect = node.getBoundingClientRect(); return rect.top < 0 || rect.bottom > innerHeight; })) throw new Error("Explore top bar did not return at document top");
       console.log(`Mobile Explore interactions passed ${JSON.stringify({ columns, filterScroll, afterMedia })}`);
+    }
+    if (process.argv.includes("--reels-v3") && target === "/reels" && width === 393) {
+      const feed = page.locator("[data-reels-mobile-feed]");
+      const dock = page.getByRole("navigation", { name: "Main navigation" });
+      const topOverlay = page.locator(".reels-mobile-top-overlay");
+      const slide = (index) => page.locator(`[data-reel-slide][data-reel-index="${index}"]`);
+      const noOverflow = async (stage) => {
+        const size = await page.evaluate(() => ({ viewport: innerWidth, document: document.documentElement.scrollWidth, body: document.body.scrollWidth }));
+        if (size.document > size.viewport + 1 || size.body > size.viewport + 1) throw new Error(`Mobile Reels overflow at ${stage}: ${JSON.stringify(size)}`);
+      };
+      if (!(await feed.count()) || !(await dock.isVisible()) || !(await dock.getByRole("button", { name: "Reels" }).getAttribute("aria-current"))) throw new Error("Mobile Reels feed or active floating dock item did not render");
+      if (await page.locator(".mobile-top-layer").count() || await page.locator(".reels-toolbar").isVisible()) throw new Error("The shared mobile top bar or desktop toolbar appeared on Reels");
+      const initial = await page.evaluate(() => {
+        const feedNode = document.querySelector("[data-reels-mobile-feed]");
+        const first = document.querySelector("[data-reel-slide]");
+        return { snap: getComputedStyle(feedNode).scrollSnapType, feed: feedNode.getBoundingClientRect().toJSON(), slide: first?.getBoundingClientRect().toJSON(), count: document.querySelectorAll("[data-reel-slide]").length, activeVideos: document.querySelectorAll("[data-reel-slide][data-active=true] video").length };
+      });
+      if (!initial.snap.includes("mandatory") || Math.abs(initial.slide.height - height) > 1 || initial.feed.width !== width) throw new Error(`Mobile Reel is not a viewport-height native snap slide: ${JSON.stringify(initial)}`);
+      if (initial.activeVideos > 1) throw new Error(`More than one active video is mounted: ${initial.activeVideos}`);
+      await noOverflow("initial Reel");
+
+      await page.getByRole("button", { name: /Filter reels/ }).click();
+      const filterSheet = page.getByRole("dialog", { name: "Filter Reels" });
+      if (!(await filterSheet.isVisible())) throw new Error("Reel filter sheet did not open");
+      await page.screenshot({ path: path.join(outputDir, "mobile-v3-reels-filter-393.png"), animations: "disabled" });
+      for (const label of ["Favorites", "Recent", "Character"]) {
+        if (!(await filterSheet.isVisible())) await page.getByRole("button", { name: /Filter reels/ }).click();
+        await filterSheet.getByRole("button", { name: label }).click();
+        await page.waitForTimeout(120);
+        if (label === "Character") {
+          const picker = filterSheet.locator("select");
+          if (!(await picker.isVisible())) throw new Error("Character filter did not show its picker inside the filter sheet");
+          const options = await picker.locator("option").count();
+          if (options > 1) await picker.selectOption({ index: 1 });
+        }
+      }
+      await filterSheet.getByRole("button", { name: /Close filters/ }).click();
+      await page.getByRole("button", { name: /Filter reels/ }).click();
+      await filterSheet.getByRole("button", { name: "All Videos" }).click();
+      if (await page.getByRole("dialog", { name: "Filter Reels" }).count()) throw new Error("Choosing a Reel filter did not close the sheet");
+
+      const initialCount = initial.count;
+      if (initialCount > 1) {
+        await page.mouse.move(190, 680);
+        await page.mouse.wheel(0, 690);
+        await page.waitForFunction(() => document.querySelector('[data-reel-slide][data-active="true"]')?.getAttribute("data-reel-index") === "1", { timeout: 5000 });
+        await page.waitForTimeout(500);
+        const nextMetrics = await page.evaluate(() => ({ index: document.querySelector('[data-reel-slide][data-active="true"]')?.getAttribute("data-reel-index"), scrollTop: Math.round(document.querySelector("[data-reels-mobile-feed]").scrollTop), height: innerHeight, activeVideos: document.querySelectorAll("[data-reel-slide][data-active=true] video").length }));
+        if (Math.abs(nextMetrics.scrollTop - nextMetrics.height) > 3) throw new Error(`Vertical wheel gesture did not snap cleanly to Reel 2: ${JSON.stringify(nextMetrics)}`);
+        if (nextMetrics.activeVideos > 1) throw new Error("Multiple videos mounted while advancing the Reels feed");
+        await page.screenshot({ path: path.join(outputDir, "mobile-v3-reels-next-393.png"), animations: "disabled" });
+        await page.mouse.wheel(0, -690);
+        await page.waitForFunction(() => document.querySelector('[data-reel-slide][data-active="true"]')?.getAttribute("data-reel-index") === "0", { timeout: 5000 });
+      } else {
+        await page.screenshot({ path: path.join(outputDir, "mobile-v3-reels-next-393.png"), animations: "disabled" });
+      }
+
+      const playableVideo = page.locator('[data-reel-slide][data-active="true"] video');
+      if (await playableVideo.count()) {
+        await playableVideo.click({ position: { x: 190, y: 350 } });
+        await page.waitForTimeout(150);
+        await page.screenshot({ path: path.join(outputDir, "mobile-v3-reels-paused-393.png"), animations: "disabled" });
+        await page.getByRole("button", { name: "Play reel" }).click().catch(() => {});
+        await page.waitForTimeout(100);
+      } else {
+        await page.screenshot({ path: path.join(outputDir, "mobile-v3-reels-paused-393.png"), animations: "disabled" });
+        console.log("No playable local video fixture is available; preview fallback rendered without fabricated playback.");
+      }
+
+      const currentSlide = page.locator('[data-reel-slide][data-active="true"]');
+      const favorite = currentSlide.getByRole("button", { name: /^(Favorite|Remove favorite)$/ });
+      const oldFavoriteLabel = await favorite.getAttribute("aria-label");
+      await favorite.click();
+      await page.waitForTimeout(120);
+      const newFavoriteLabel = await page.locator('[data-reel-slide][data-active="true"]').getByRole("button", { name: /^(Favorite|Remove favorite)$/ }).getAttribute("aria-label");
+      if (newFavoriteLabel === oldFavoriteLabel) throw new Error("Reel favorite action did not update its active state");
+      await page.locator('[data-reel-slide][data-active="true"]').getByRole("button", { name: /^(Favorite|Remove favorite)$/ }).click();
+
+      const referenceAction = page.locator('[data-reel-slide][data-active="true"] .reels-mobile-rail button').nth(3);
+      const oldReferenceLabel = await referenceAction.getAttribute("aria-label");
+      await referenceAction.click();
+      await page.waitForTimeout(120);
+      const referenceLabel = await page.locator('[data-reel-slide][data-active="true"] .reels-mobile-rail button').nth(3).getAttribute("aria-label");
+      const referencePressed = await page.locator('[data-reel-slide][data-active="true"] .reels-mobile-rail button').nth(3).getAttribute("aria-pressed");
+      const expectedReferenceLabel = oldReferenceLabel === "Use as reference" ? "Remove reference" : "Use as reference";
+      if (referenceLabel !== expectedReferenceLabel || referencePressed !== String(expectedReferenceLabel === "Remove reference")) throw new Error(`Reel reference action did not update its active state: ${JSON.stringify({ oldReferenceLabel, referenceLabel, referencePressed })}`);
+      await page.locator('[data-reel-slide][data-active="true"] .reels-mobile-rail button').nth(3).click();
+
+      await page.locator('[data-reel-slide][data-active="true"]').getByRole("button", { name: "Notes" }).click();
+      const mediaDetail = page.locator(".media-detail-backdrop");
+      if (!(await mediaDetail.isVisible())) throw new Error("Notes action did not open the existing Media Detail surface");
+      await page.getByRole("button", { name: "Close media detail" }).click();
+      await page.waitForTimeout(100);
+      if (await dock.getByRole("button", { name: "Reels" }).getAttribute("aria-current") !== "page") throw new Error("Closing Media Detail did not return to the Reels route");
+
+      await page.locator('[data-reel-slide][data-active="true"]').getByRole("button", { name: "More" }).click();
+      const more = page.getByRole("dialog", { name: "Reel details" });
+      if (!(await more.isVisible())) throw new Error("More actions did not open the mobile bottom sheet");
+      await page.screenshot({ path: path.join(outputDir, "mobile-v3-reels-more-393.png"), animations: "disabled" });
+      await more.getByRole("button", { name: "Add to Collection" }).click();
+      const collections = page.getByRole("dialog", { name: "Add to Collection" });
+      if (!(await collections.isVisible())) throw new Error("Add to Collection did not open its mobile sheet");
+      await collections.getByRole("button", { name: "Cancel" }).click();
+      await page.locator('[data-reel-slide][data-active="true"]').getByRole("button", { name: "More" }).click();
+      await page.keyboard.press("Escape");
+      if (await page.getByRole("dialog", { name: "Reel details" }).count()) throw new Error("Escape did not close the More sheet");
+
+      if (initialCount > 1) {
+        await page.mouse.wheel(0, initialCount * height);
+        await page.waitForTimeout(700);
+        const lastIndex = await page.locator('[data-reel-slide][data-active="true"]').getAttribute("data-reel-index");
+        if (Number(lastIndex) !== initialCount - 1) throw new Error(`Reels did not reach the last snap boundary: ${lastIndex}/${initialCount}`);
+        await page.mouse.wheel(0, height);
+        await page.waitForTimeout(300);
+        if (await page.locator('[data-reel-slide][data-active="true"]').getAttribute("data-reel-index") !== lastIndex) throw new Error("Reels moved beyond the last item boundary");
+      }
+      await noOverflow("interaction sequence");
+      console.log(`Mobile Reels interactions passed ${JSON.stringify({ ...initial, activeIndex: await page.locator('[data-reel-slide][data-active="true"]').getAttribute("data-reel-index") })}`);
     }
     if (process.argv.includes("--home-topbar") && target === "/" && width === 393) {
       const topBar = page.locator(".mobile-top-layer.is-home .mobile-top-bar");

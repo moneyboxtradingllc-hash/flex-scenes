@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { RefObject } from "react";
 import type { AppSnapshot, MediaAsset } from "@/lib/domain";
 
 type Filter = "all" | "favorites" | "recent" | "character";
+const filterLabels: Record<Filter, string> = { all: "All Videos", favorites: "Favorites", recent: "Recent", character: "Character" };
 const isPlayable = (asset: MediaAsset) => /\.(mp4|webm|ogv)(?:[?#].*)?$/i.test(asset.url);
 
 function Icon({ name, className = "" }: { name: string; className?: string }) {
@@ -18,6 +20,7 @@ function Icon({ name, className = "" }: { name: string; className?: string }) {
     replay: "M20 11a8 8 0 1 0 1 5M20 4v7h-7",
     close: "m18 6-12 12M6 6l12 12",
     down: "m7 10 5 5 5-5",
+    filter: "M4 7h16M7 12h10m-7 5h4M6 7a1 1 0 1 0 0 .01M17 12a1 1 0 1 0 0 .01M10 17a1 1 0 1 0 0 .01",
   };
   return <svg aria-hidden="true" viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={paths[name]} /></svg>;
 }
@@ -28,12 +31,14 @@ export function PremiumReels({
   favorite,
   reference,
   create,
+  openCharacter,
 }: {
   data: AppSnapshot;
   select: (asset: MediaAsset) => void;
   favorite: (id: string) => void;
   reference: (id: string) => void;
   create: (asset: MediaAsset, conversationId?: string, characterId?: string, mode?: "image" | "video") => void;
+  openCharacter: (id: string) => void;
 }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [characterId, setCharacterId] = useState("");
@@ -46,7 +51,14 @@ export function PremiumReels({
   const [collectionOpen, setCollectionOpen] = useState(false);
   const [collectionId, setCollectionId] = useState("");
   const [collectionStatus, setCollectionStatus] = useState("");
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  const [captionExpanded, setCaptionExpanded] = useState(false);
+  const [favoriteOverrides, setFavoriteOverrides] = useState<Record<string, boolean>>({});
+  const [referenceOverrides, setReferenceOverrides] = useState<Record<string, boolean>>({});
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const mobileFeedRef = useRef<HTMLDivElement>(null);
+  const activeSlideRef = useRef(0);
   const touchY = useRef<number | null>(null);
   const videos = useMemo(() => {
     const filtered = data.media.filter((asset) => asset.type === "video" &&
@@ -63,35 +75,107 @@ export function PremiumReels({
   const nearScenes = data.media.filter((asset) => asset.characterId === item?.characterId && asset.id !== item?.id).slice(0, 4);
 
   useEffect(() => {
+    const query = window.matchMedia("(max-width: 767px)");
+    const update = () => setIsMobileViewport(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+
+  useEffect(() => {
     const node = videoRef.current;
-    if (!node || !playable) return;
+    if (isMobileViewport || !node || !playable) return;
     if (!playing) { node.pause(); return; }
     node.play().catch(() => setPlaying(false));
-  }, [playing, playable, item?.id]);
+  }, [isMobileViewport, playing, playable, item?.id]);
+
+  useEffect(() => {
+    if (!isMobileViewport) return;
+    const root = mobileFeedRef.current;
+    if (!root) return;
+    const slides = [...root.querySelectorAll<HTMLElement>("[data-reel-slide]")];
+    const observer = new IntersectionObserver((entries) => {
+      const visible = entries
+        .filter((entry) => entry.isIntersecting)
+        .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+      if (!visible || visible.intersectionRatio < 0.6) return;
+      const nextIndex = Number((visible.target as HTMLElement).dataset.reelIndex);
+      if (!Number.isInteger(nextIndex) || nextIndex === activeSlideRef.current) return;
+      activeSlideRef.current = nextIndex;
+      setIndex(nextIndex);
+      setPlaying(true);
+      setLoaded(false);
+      setEnded(false);
+      setProgress(0);
+    }, { root, threshold: [0.35, 0.6, 0.8, 1] });
+    slides.forEach((slide) => observer.observe(slide));
+    return () => observer.disconnect();
+  }, [isMobileViewport, videos]);
+
+  useEffect(() => {
+    if (!isMobileViewport) return;
+    const root = mobileFeedRef.current;
+    if (!root) return;
+    const active = root.querySelector<HTMLVideoElement>(`[data-reel-index="${safeIndex}"] video`);
+    root.querySelectorAll("video").forEach((node) => { if (node !== active) node.pause(); });
+    if (!active || !playing) { active?.pause(); return; }
+    active.muted = true;
+    active.playsInline = true;
+    active.play().catch(() => setPlaying(false));
+  }, [isMobileViewport, safeIndex, playing, playable, item?.id]);
+
+  useEffect(() => {
+    if (!isMobileViewport || !mobileFeedRef.current) return;
+    mobileFeedRef.current.scrollTo({ top: 0, behavior: "instant" });
+    activeSlideRef.current = 0;
+  }, [isMobileViewport, filter, characterId]);
+
+  useEffect(() => {
+    if (!filterSheetOpen && !moreOpen && !collectionOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setFilterSheetOpen(false);
+        setMoreOpen(false);
+        setCollectionOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [filterSheetOpen, moreOpen, collectionOpen]);
 
   const move = useCallback((amount: number) => {
-    setIndex((current) => Math.max(0, Math.min(videos.length - 1, current + amount)));
+    const nextIndex = Math.max(0, Math.min(videos.length - 1, safeIndex + amount));
+    if (isMobileViewport) {
+      mobileFeedRef.current?.querySelector<HTMLElement>(`[data-reel-index="${nextIndex}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    setIndex(nextIndex);
     setLoaded(false);
     setEnded(false);
     setProgress(0);
     setPlaying(false);
-  }, [videos.length]);
+  }, [isMobileViewport, safeIndex, videos.length]);
 
   const changeFilter = (value: Filter) => {
     setFilter(value);
+    setFilterSheetOpen(value === "character");
     setIndex(0);
+    activeSlideRef.current = 0;
     setProgress(0);
     setLoaded(false);
     setEnded(false);
     setPlaying(true);
+    setCaptionExpanded(false);
   };
   const changeCharacter = (value: string) => {
     setCharacterId(value);
     setIndex(0);
+    activeSlideRef.current = 0;
     setProgress(0);
     setLoaded(false);
     setEnded(false);
     setPlaying(true);
+    setCaptionExpanded(false);
   };
 
   useEffect(() => {
@@ -122,6 +206,20 @@ export function PremiumReels({
     setCollectionOpen(false);
   };
 
+  if (!item && isMobileViewport) return <>
+    <div className="reels-mobile-empty">
+      <div className="reels-mobile-empty-content">
+        <div className="reels-mobile-empty-icon"><Icon name="play" className="h-7 w-7" /></div>
+        <p className="reels-mobile-empty-eyebrow">REELS</p>
+        <h1>{filter === "all" ? "Bring a character to life." : "No Reels match this filter."}</h1>
+        <p>{filter === "all" ? "Animate an image to create your first Reel" : "Try another filter or create a video."}</p>
+        <button onClick={() => { const image = data.media.find((asset) => asset.type === "image"); if (image) create(image, undefined, image.characterId, "video"); else create(data.media[0], undefined, data.media[0]?.characterId, "video"); }}>Create Video</button>
+      </div>
+    </div>
+    <div className="reels-mobile-top-overlay"><span>REELS</span><button aria-label={`Filter reels, current filter ${filterLabels[filter]}`} onClick={() => setFilterSheetOpen(true)}><Icon name="filter" className="h-5 w-5" /><i data-active-filter={filter !== "all" || undefined} /></button></div>
+    {filterSheetOpen && <div className="reels-mobile-sheet-backdrop" onMouseDown={() => setFilterSheetOpen(false)}><section className="reels-mobile-sheet" role="dialog" aria-modal="true" aria-labelledby="reels-filter-title" onMouseDown={(event) => event.stopPropagation()}><div className="reels-sheet-handle" /><div className="reels-sheet-heading"><h2 id="reels-filter-title">Filter Reels</h2><button aria-label="Close filters" onClick={() => setFilterSheetOpen(false)}><Icon name="close" className="h-5 w-5" /></button></div><div className="reels-filter-options" role="group" aria-label="Reel filters">{(["all", "favorites", "character", "recent"] as Filter[]).map((value) => <button key={value} aria-pressed={filter === value} onClick={() => changeFilter(value)}>{filterLabels[value]}{filter === value && <span aria-hidden="true">✓</span>}</button>)}</div>{filter === "character" && <label className="reels-character-picker">Character<select value={characterId} onChange={(event) => changeCharacter(event.target.value)}><option value="">Every character</option>{data.characters.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></label>}</section></div>}
+  </>;
+
   if (!item) return (
     <div className="reels-shell flex min-h-[calc(100dvh-11rem)] items-center justify-center px-5 py-10 md:min-h-[calc(100dvh-8rem)]">
       <div className="max-w-md text-center">
@@ -133,6 +231,96 @@ export function PremiumReels({
       </div>
     </div>
   );
+
+  if (isMobileViewport) {
+    return <>
+      <div className="reels-mobile-feed" ref={mobileFeedRef} data-reels-mobile-feed aria-label="Vertical Reels feed">
+        {videos.map((asset, slideIndex) => {
+          const active = slideIndex === safeIndex;
+          const assetCharacter = data.characters.find((entry) => entry.id === asset.characterId);
+          const visibleAsset = {
+            ...asset,
+            favorite: favoriteOverrides[asset.id] ?? asset.favorite,
+            isReference: referenceOverrides[asset.id] ?? asset.isReference,
+          };
+          const assetPlayable = isPlayable(asset);
+          const assetJob = data.jobs.find((entry) => entry.mediaId === asset.id);
+          const assetParent = asset.parentId ? data.media.find((entry) => entry.id === asset.parentId) : undefined;
+          return <MobileReelSlide
+            key={asset.id}
+            asset={visibleAsset}
+            index={slideIndex}
+            active={active}
+            playable={assetPlayable}
+            playing={playing && active}
+            loaded={loaded && active}
+            ended={ended && active}
+            progress={active ? progress : 0}
+            character={assetCharacter}
+            parent={assetParent}
+            videoRef={active ? videoRef : undefined}
+            onPlay={() => { if (activeSlideRef.current === slideIndex) setPlaying(true); }}
+            onPause={() => { if (activeSlideRef.current === slideIndex) setPlaying(false); }}
+            onLoaded={() => { if (activeSlideRef.current === slideIndex) { setLoaded(true); setPlaying(true); } }}
+            onEnded={() => { if (activeSlideRef.current === slideIndex) { setPlaying(false); setEnded(true); setProgress(1); } }}
+            onProgress={(value) => { if (activeSlideRef.current === slideIndex) setProgress(value); }}
+            onSeek={(value) => { const video = videoRef.current; if (active && video?.duration) { video.currentTime = value * video.duration; setProgress(value); setEnded(false); } }}
+            onToggle={() => { if (active) togglePlayback(); }}
+            onFavorite={() => { setFavoriteOverrides((current) => ({ ...current, [asset.id]: !(current[asset.id] ?? asset.favorite) })); void favorite(asset.id); }}
+            onNotes={() => select(asset)}
+            onRemix={() => create(asset, assetJob?.conversationId ?? undefined, asset.characterId, "video")}
+            onReference={() => { setReferenceOverrides((current) => ({ ...current, [asset.id]: !(current[asset.id] ?? asset.isReference) })); void reference(asset.id); }}
+            onMore={() => { if (active) setMoreOpen(true); }}
+            onOpenCharacter={() => assetCharacter && openCharacter(assetCharacter.id)}
+            captionExpanded={captionExpanded}
+            toggleCaption={() => setCaptionExpanded((current) => !current)}
+          />;
+        })}
+      </div>
+
+      <div className="reels-mobile-top-overlay">
+        <span>REELS</span>
+        <button aria-label={`Filter reels, current filter ${filterLabels[filter]}`} onClick={() => setFilterSheetOpen(true)}>
+          <Icon name="filter" className="h-5 w-5" />
+          <i data-active-filter={filter !== "all" || undefined} />
+        </button>
+      </div>
+
+      {filterSheetOpen && <div className="reels-mobile-sheet-backdrop" onMouseDown={() => setFilterSheetOpen(false)}>
+        <section className="reels-mobile-sheet" role="dialog" aria-modal="true" aria-labelledby="reels-filter-title" onMouseDown={(event) => event.stopPropagation()}>
+          <div className="reels-sheet-handle" />
+          <div className="reels-sheet-heading"><h2 id="reels-filter-title">Filter Reels</h2><button aria-label="Close filters" onClick={() => setFilterSheetOpen(false)}><Icon name="close" className="h-5 w-5" /></button></div>
+          <div className="reels-filter-options" role="group" aria-label="Reel filters">
+            {(["all", "favorites", "character", "recent"] as Filter[]).map((value) => <button key={value} aria-pressed={filter === value} onClick={() => changeFilter(value)}>{filterLabels[value]}{filter === value && <span aria-hidden="true">✓</span>}</button>)}
+          </div>
+          {filter === "character" && <label className="reels-character-picker">Character<select value={characterId} onChange={(event) => changeCharacter(event.target.value)}><option value="">Every character</option>{data.characters.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></label>}
+        </section>
+      </div>}
+
+      {moreOpen && item && <div className="reels-mobile-sheet-backdrop" onMouseDown={() => setMoreOpen(false)}>
+        <section className="reels-mobile-sheet" role="dialog" aria-modal="true" aria-labelledby="reel-more-title" onMouseDown={(event) => event.stopPropagation()}>
+          <div className="reels-sheet-handle" />
+          <div className="reels-sheet-heading"><h2 id="reel-more-title">Reel details</h2><button onClick={() => setMoreOpen(false)} aria-label="Close menu"><Icon name="close" className="h-5 w-5" /></button></div>
+          <div className="reels-sheet-actions">
+            <button onClick={() => { setMoreOpen(false); setCollectionOpen(true); }}>Add to Collection</button>
+            {character && <button onClick={() => { setMoreOpen(false); openCharacter(character.id); }}>Open Character · {character.name}</button>}
+            <button onClick={() => { setMoreOpen(false); select(item); }}>Open Media Detail</button>
+            {parent && <button onClick={() => { setMoreOpen(false); select(parent); }}>View Lineage</button>}
+            <a href={item.url} download>Export</a>
+          </div>
+        </section>
+      </div>}
+
+      {collectionOpen && <div className="reels-mobile-sheet-backdrop" onMouseDown={() => setCollectionOpen(false)}>
+        <section className="reels-mobile-sheet" role="dialog" aria-modal="true" aria-labelledby="collection-title" onMouseDown={(event) => event.stopPropagation()}>
+          <div className="reels-sheet-handle" />
+          <div className="reels-sheet-heading"><h2 id="collection-title">Add to Collection</h2><button onClick={() => setCollectionOpen(false)} aria-label="Close collections"><Icon name="close" className="h-5 w-5" /></button></div>
+          {data.collections.length ? <label className="reels-character-picker">Choose a collection<select id="reel-collection" value={collectionId} onChange={(event) => setCollectionId(event.target.value)}><option value="">Select a collection</option>{data.collections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>)}</select></label> : <p className="reels-empty-collections">Create a collection first from Collections.</p>}
+          <div className="reels-sheet-footer"><button onClick={() => setCollectionOpen(false)}>Cancel</button><button disabled={!collectionId} onClick={addToCollection}>Add</button></div>
+        </section>
+      </div>}
+    </>;
+  }
 
   return (
     <div className="reels-shell mx-auto w-full max-w-[1240px] px-0 md:px-3 xl:px-5">
@@ -195,6 +383,74 @@ export function PremiumReels({
   );
 }
 
-function ActionButton({ label, icon, onClick, active = false, primary = false, horizontal = false }: { label: string; icon: string; onClick: () => void; active?: boolean; primary?: boolean; horizontal?: boolean }) {
-  return <button onClick={onClick} aria-label={label} title={label} className={`reels-action ${horizontal ? "reels-action-horizontal" : ""} ${primary ? "bg-fuchsia-500 text-white" : active ? "text-fuchsia-300" : "text-white"}`}><Icon name={icon} className="h-5 w-5" />{horizontal && <span className="text-xs">{label}</span>}</button>;
+function MobileReelSlide({ asset, index, active, playable, playing, loaded, ended, progress, character, parent, videoRef, onPlay, onPause, onLoaded, onEnded, onProgress, onSeek, onToggle, onFavorite, onNotes, onRemix, onReference, onMore, onOpenCharacter, captionExpanded, toggleCaption }: {
+  asset: MediaAsset;
+  index: number;
+  active: boolean;
+  playable: boolean;
+  playing: boolean;
+  loaded: boolean;
+  ended: boolean;
+  progress: number;
+  character?: AppSnapshot["characters"][number];
+  parent?: MediaAsset;
+  videoRef?: RefObject<HTMLVideoElement | null>;
+  onPlay: () => void;
+  onPause: () => void;
+  onLoaded: () => void;
+  onEnded: () => void;
+  onProgress: (value: number) => void;
+  onSeek: (value: number) => void;
+  onToggle: () => void;
+  onFavorite: () => void;
+  onNotes: () => void;
+  onRemix: () => void;
+  onReference: () => void;
+  onMore: () => void;
+  onOpenCharacter: () => void;
+  captionExpanded: boolean;
+  toggleCaption: () => void;
+}) {
+  const [landscape, setLandscape] = useState(false);
+  const poster = asset.posterUrl || (!playable ? asset.url : undefined);
+  const candidateCaption = asset.caption || asset.title;
+  const caption = /provider|model id|job id|created with|deterministic test/i.test(candidateCaption) ? "" : candidateCaption;
+  return <article className="reels-mobile-slide" data-reel-slide data-reel-index={index} data-active={active || undefined} data-playing={active && playing || undefined} aria-label={`Reel ${index + 1}: ${asset.title}`}>
+    <div className="reels-mobile-media" data-preview={playable ? undefined : "true"}>
+      {poster && <img className={`reels-mobile-backdrop ${playable ? "" : "is-preview"}`} src={poster} alt="" aria-hidden="true" loading={active ? "eager" : "lazy"} />}
+      {playable && active ? <>
+        <video key={asset.id} ref={videoRef} src={asset.url} poster={asset.posterUrl ?? undefined} muted playsInline preload="none" onLoadedData={onLoaded} onCanPlay={onLoaded} onLoadedMetadata={(event) => setLandscape(event.currentTarget.videoWidth > event.currentTarget.videoHeight * 1.15)} onPlay={onPlay} onPause={onPause} onEnded={onEnded} onTimeUpdate={(event) => onProgress(event.currentTarget.duration ? event.currentTarget.currentTime / event.currentTarget.duration : 0)} onClick={(event) => { event.stopPropagation(); onToggle(); }} aria-label={`${asset.title}, ${playing ? "playing" : "paused"}`} className={`reels-mobile-video ${landscape ? "is-landscape" : ""}`} />
+        {!loaded && <div className="reels-mobile-loading" role="status" aria-label="Loading video"><span /></div>}
+        {(ended || !playing) && loaded && <button onClick={onToggle} aria-label={ended ? "Replay reel" : "Play reel"} className="reels-mobile-play"><Icon name={ended ? "replay" : "play"} className="h-7 w-7" /></button>}
+        <label className="reels-mobile-progress" aria-label="Video progress"><input aria-label="Seek video" type="range" min="0" max="1" step="0.001" value={progress} onChange={(event) => onSeek(Number(event.target.value))} /><span style={{ width: `${progress * 100}%` }} /></label>
+      </> : poster ? <img className="reels-mobile-preview" src={poster} alt={asset.title} loading={active ? "eager" : "lazy"} /> : <div className="reels-mobile-preview-placeholder" aria-label="Video preview unavailable" />}
+
+      <div className="reels-mobile-top-gradient" />
+      <div className="reels-mobile-bottom-gradient" />
+      {!playable && <span className="reels-mobile-preview-badge">Preview</span>}
+
+      <div className="reels-mobile-identity">
+        <button className="reels-mobile-character" onClick={onOpenCharacter} aria-label={character ? `Open ${character.name} Character Hub` : "Character unavailable"} disabled={!character}>
+          <img src={character?.portraitUrl || "/fixtures/char-iona-portrait.svg"} alt="" loading={active ? "eager" : "lazy"} />
+          <span>{character?.name ?? "A character"}</span>
+        </button>
+        {character?.handle && <span className="reels-mobile-handle">{character.handle}</span>}
+        {caption && <p className={captionExpanded ? "is-expanded" : ""}>{caption}</p>}
+        {caption.length > 112 && <button className="reels-mobile-caption-more" onClick={toggleCaption}>{captionExpanded ? "Less" : "More"}</button>}
+        {parent && <span className="reels-mobile-parent">From {parent.title}</span>}
+      </div>
+
+      <div className="reels-mobile-rail" aria-label="Reel actions">
+        <ActionButton label={asset.favorite ? "Remove favorite" : "Favorite"} visibleLabel={asset.favorite ? "Saved" : "Favorite"} icon="heart" active={asset.favorite} onClick={onFavorite} showLabel />
+        <ActionButton label="Notes" icon="note" onClick={onNotes} showLabel />
+        <ActionButton label={playable ? "Remix" : "Create"} icon="remix" primary onClick={onRemix} showLabel />
+        <ActionButton label={asset.isReference ? "Remove reference" : "Use as reference"} visibleLabel={asset.isReference ? "Ref ✓" : "Ref"} icon="reference" active={asset.isReference} onClick={onReference} showLabel />
+        <ActionButton label="More" icon="more" onClick={onMore} showLabel />
+      </div>
+    </div>
+  </article>;
+}
+
+function ActionButton({ label, visibleLabel, icon, onClick, active = false, primary = false, horizontal = false, showLabel = false }: { label: string; visibleLabel?: string; icon: string; onClick: () => void; active?: boolean; primary?: boolean; horizontal?: boolean; showLabel?: boolean }) {
+  return <button onClick={onClick} aria-label={label} aria-pressed={active} title={label} className={`reels-action ${horizontal ? "reels-action-horizontal" : ""} ${primary ? "bg-fuchsia-500 text-white" : active ? "text-fuchsia-300" : "text-white"}`}><Icon name={icon} className="h-5 w-5" />{(horizontal || showLabel) && <span className="text-xs">{visibleLabel ?? label}</span>}</button>;
 }
