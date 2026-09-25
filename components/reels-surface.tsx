@@ -8,7 +8,7 @@ type Filter = "all" | "favorites" | "recent" | "character";
 const filterLabels: Record<Filter, string> = { all: "All Videos", favorites: "Favorites", recent: "Recent", character: "Character" };
 const isPlayable = (asset: MediaAsset) => /\.(mp4|webm|ogv)(?:[?#].*)?$/i.test(asset.url);
 const subscribeToQaPlayback = () => () => {};
-const getQaPlaybackSnapshot = () => process.env.NODE_ENV === "development" && window.matchMedia("(max-width: 767px)").matches && new URLSearchParams(window.location.search).get("qaPlayback") === "1";
+const getQaPlaybackSnapshot = () => typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches && new URLSearchParams(window.location.search).get("qaPlayback") === "1";
 
 function Icon({ name, className = "" }: { name: string; className?: string }) {
   const paths: Record<string, string> = {

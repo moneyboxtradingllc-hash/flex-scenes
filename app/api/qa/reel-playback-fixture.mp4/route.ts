@@ -5,9 +5,10 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const fixturePath = path.join(process.cwd(), "tests", "fixtures", "development-only", "reel-playback-qa-5s.mp4");
+const localQaEnabled = process.env.FLEX_SCENES_LOCAL_QA === "1";
 
 export async function GET(request: Request) {
-  if (process.env.NODE_ENV !== "development") return new Response(null, { status: 404 });
+  if (!localQaEnabled) return new Response(null, { status: 404 });
 
   const fileStat = await stat(fixturePath);
   const file = await readFile(fixturePath);
