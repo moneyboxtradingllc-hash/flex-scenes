@@ -215,7 +215,8 @@ export function StudioApp({
     />;
   }
   return (
-    <main className={`studio-shell mx-auto min-h-screen max-w-[1680px] bg-[#08090d] pb-20 text-zinc-100 md:grid md:grid-cols-[220px_minmax(0,1fr)] ${view === "home" ? "is-home-view" : ""} ${isWideArchive ? "xl:grid-cols-[220px_minmax(0,1fr)]" : "xl:grid-cols-[220px_minmax(0,1fr)_300px]"} ${view === "messages" && mobileThreadActive ? "mobile-thread-active" : ""} md:pb-0`}>
+    <main className={`studio-shell mx-auto min-h-screen max-w-[1680px] bg-[#08090d] pb-20 text-zinc-100 md:grid md:grid-cols-[220px_minmax(0,1fr)] ${view === "home" ? "is-home-view" : ""} ${view === "explore" ? "mobile-explore-flow" : ""} ${isWideArchive ? "xl:grid-cols-[220px_minmax(0,1fr)]" : "xl:grid-cols-[220px_minmax(0,1fr)_300px]"} ${view === "messages" && mobileThreadActive ? "mobile-thread-active" : ""} md:pb-0`}>
+      <MobileAppShell view={view} characters={data.characters} character={active} navigate={(destination) => go(destination as View)} setCharacter={setActiveCharacter} messageThread={view === "messages" && mobileThreadActive} overlayOpen={Boolean(selected)} />
       <aside className="app-desktop-nav hidden border-r border-white/8 bg-[#0c0d12] p-5 md:block">
         <button
           onClick={() => go("home")}
@@ -321,7 +322,6 @@ export function StudioApp({
         </div>
       </section>
       {!isWideArchive && <ContextRail data={data} character={active} view={view} go={go} openConversation={openConversation} />}
-      <MobileAppShell view={view} characters={data.characters} character={active} navigate={(destination) => go(destination as View)} setCharacter={setActiveCharacter} messageThread={view === "messages" && mobileThreadActive} overlayOpen={Boolean(selected)} />
       <nav aria-label="Main navigation" className="app-bottom-nav fixed bottom-0 left-0 right-0 z-30 flex justify-around border-t border-white/10 bg-[#111218]/95 px-2 py-2 backdrop-blur md:hidden">
         {nav.map(([id, label]) => (
           <button

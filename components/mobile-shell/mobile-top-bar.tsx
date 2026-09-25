@@ -7,13 +7,14 @@ import { UiIcon } from "@/components/ui-icon";
 import { MobileAppMenu } from "./mobile-app-menu";
 import { mobileCharacterAvatar } from "./mobile-character-avatar";
 
-export function MobileTopBar({ view, character, characters, navigate, setCharacter, minimal = false }: {
+export function MobileTopBar({ view, character, characters, navigate, setCharacter, minimal = false, flow = false }: {
   view: string;
   character?: AppSnapshot["characters"][number];
   characters: AppSnapshot["characters"];
   navigate: (destination: MobilePrimaryDestination) => void;
   setCharacter: (id: string) => void;
   minimal?: boolean;
+  flow?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -41,19 +42,19 @@ export function MobileTopBar({ view, character, characters, navigate, setCharact
   }, [open]);
 
   useEffect(() => {
-    if (!open || view !== "home" || !barRef.current) return;
+    if (!open || !flow || !barRef.current) return;
     const observer = new IntersectionObserver(([entry]) => {
       if (!entry.isIntersecting) setOpen(false);
     });
     observer.observe(barRef.current);
     return () => observer.disconnect();
-  }, [open, view]);
+  }, [flow, open]);
 
   const title = view === "create" ? "Create" : view === "progress" ? "Progress" : view === "result" ? "Result" : "FLEX SCENES";
   const searchAction = ["home", "explore", "library"].includes(view);
   const showMessages = ["home", "explore", "reels", "library", "character", "collections", "jobs", "settings"].includes(view);
   const showActivity = view === "home";
-  return <div className={`mobile-top-layer ${view === "home" ? "is-home" : ""} ${minimal ? "is-minimal" : ""}`}>
+  return <div className={`mobile-top-layer ${view === "home" ? "is-home" : ""} ${flow ? "is-flow" : ""} ${minimal ? "is-minimal" : ""}`}>
     <div className="mobile-top-cluster" ref={rootRef}>
       <div className="mobile-top-bar" ref={barRef}>
       <button ref={titleRef} className="mobile-top-title" aria-label="Open Flex Scenes menu" aria-expanded={open} aria-controls="mobile-app-menu" onClick={() => setOpen((value) => !value)}>

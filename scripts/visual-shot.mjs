@@ -32,12 +32,19 @@ const mobileV3Captures = [
   { width: 430, height: 932, name: "mobile-v3-home-430" },
 ];
 const homeTopbarCapture = [{ width: 393, height: 852, name: "home-topbar-at-top-393" }];
+const exploreV3Captures = [
+  { width: 390, height: 844, name: "mobile-v3-explore-390" },
+  { width: 393, height: 852, name: "mobile-v3-explore-393" },
+  { width: 430, height: 932, name: "mobile-v3-explore-430" },
+];
 const captures = process.argv.includes("--home-v2")
   ? referenceCaptures
   : process.argv.includes("--desktop-v3")
     ? desktopV3Captures
   : process.argv.includes("--home-topbar")
     ? homeTopbarCapture
+  : process.argv.includes("--explore-v3")
+    ? exploreV3Captures
   : process.argv.includes("--mobile-v3")
     ? mobileV3Captures
   : process.argv.includes("--mobile-home")
@@ -243,6 +250,135 @@ try {
     const output = path.join(outputDir, `${name}.png`);
     await page.screenshot({ path: output, animations: "disabled" });
     console.log(`${output} ${JSON.stringify(metrics)}`);
+    if (process.argv.includes("--explore-v3") && target === "/explore" && width === 393) {
+      const search = page.getByRole("searchbox", { name: "Search characters, scenes, collections, captions, prompts, and notes" });
+      const filters = page.getByRole("group", { name: "Explore filters" });
+      const dock = page.getByRole("navigation", { name: "Main navigation" });
+      const topBar = page.locator(".mobile-top-layer.is-flow .mobile-top-bar");
+      const checkNoOverflow = async (stage) => {
+        const dimensions = await page.evaluate(() => ({ viewport: innerWidth, document: document.documentElement.scrollWidth, body: document.body.scrollWidth }));
+        if (dimensions.document > dimensions.viewport + 1 || dimensions.body > dimensions.viewport + 1) throw new Error(`Explore horizontal overflow at ${stage}: ${JSON.stringify(dimensions)}`);
+        return dimensions;
+      };
+      const columns = await page.locator(".explore-grid").first().evaluate((node) => getComputedStyle(node).gridTemplateColumns.split(" ").length);
+      if (columns !== 3) throw new Error(`Mobile Explore must use a 3-column discovery grid, got ${columns}`);
+      if (await search.isVisible() !== true || !(await dock.isVisible()) || !(await dock.getByRole("button", { name: "Explore" }).getAttribute("aria-current"))) throw new Error("Explore search or active floating dock did not render");
+      const initialTop = await topBar.evaluate((node) => ({ position: getComputedStyle(node.closest(".mobile-top-layer")).position, rect: node.getBoundingClientRect().toJSON() }));
+      if (initialTop.position === "fixed" || initialTop.position === "sticky" || initialTop.rect.top < 0 || initialTop.rect.bottom > height) throw new Error(`Explore top bar is not in normal flow at the page top: ${JSON.stringify(initialTop)}`);
+      await checkNoOverflow("initial All view");
+
+      const chips = filters.locator("button");
+      await filters.evaluate((node) => { node.scrollLeft = node.scrollWidth; });
+      const filterScroll = await filters.evaluate((node) => ({ left: node.scrollLeft, max: node.scrollWidth - node.clientWidth, pageX: window.scrollX }));
+      if (filterScroll.max <= 0 || filterScroll.left <= 0 || filterScroll.pageX !== 0) throw new Error(`Explore filters did not scroll independently: ${JSON.stringify(filterScroll)}`);
+      await filters.evaluate((node) => { node.scrollLeft = 0; });
+
+      for (const [label, type] of [["Images", "image"], ["Videos", "video"], ["Favorites", "favorite"], ["Collections", "collection"]]) {
+        await filters.getByRole("button", { name: label }).click();
+        await page.waitForTimeout(120);
+        const visibleTypes = await page.locator(".explore-media-tile").evaluateAll((nodes) => nodes.map((node) => ({ type: node.dataset.mediaType, favorite: node.dataset.favorite, collection: node.dataset.collectionMember })));
+        if (type === "image" && visibleTypes.some((item) => item.type !== "image")) throw new Error("Images filter returned non-image media");
+        if (type === "video" && visibleTypes.some((item) => item.type !== "video")) throw new Error("Videos filter returned non-video media");
+        if (type === "favorite" && visibleTypes.some((item) => item.favorite !== "true")) throw new Error("Favorites filter returned an un-favorited asset");
+        if (type === "collection" && visibleTypes.some((item) => item.collection !== "true")) throw new Error("Collections filter returned media without collection membership");
+        await checkNoOverflow(`${label} filter`);
+      }
+
+      await filters.getByRole("button", { name: "Characters" }).click();
+      await page.waitForTimeout(120);
+      await filters.evaluate((node) => { node.scrollLeft = 0; });
+      await page.screenshot({ path: path.join(outputDir, "mobile-v3-explore-characters-393.png"), animations: "disabled" });
+      if (!(await page.locator(".explore-character-card").count())) throw new Error("Characters filter has no character results");
+      const characterCard = page.locator(".explore-character-card").first();
+      await characterCard.click();
+      if (new URL(page.url()).pathname !== "/character") throw new Error("Explore character result did not open Character Hub");
+      await dock.getByRole("button", { name: "Explore" }).click();
+
+      await filters.getByRole("button", { name: "Collections" }).click();
+      await page.waitForTimeout(100);
+      await filters.evaluate((node) => { node.scrollLeft = 0; });
+      await page.screenshot({ path: path.join(outputDir, "mobile-v3-explore-collections-393.png"), animations: "disabled" });
+      const collectionCard = page.locator(".explore-collection-card").first();
+      if (!(await collectionCard.count())) throw new Error("Collections filter has no collection results");
+      await collectionCard.click();
+      if (!(await page.locator(".media-detail-backdrop").isVisible())) throw new Error("Opening a collection did not preserve its media-detail behavior");
+      await page.getByRole("button", { name: "Close media detail" }).click();
+      await filters.getByRole("button", { name: "All" }).click();
+
+      await search.fill("Mara");
+      await page.waitForFunction(() => document.querySelector(".explore-surface")?.getAttribute("data-explore-search") === "true");
+      await page.waitForTimeout(100);
+      await page.screenshot({ path: path.join(outputDir, "mobile-v3-explore-search-393.png"), animations: "disabled" });
+      if (!(await page.locator(".explore-character-section.is-search-strip .explore-character-card").count())) throw new Error("Character search match did not render in the compact results strip");
+      const keyboardMocked = await page.evaluate(() => {
+        const descriptor = Object.getOwnPropertyDescriptor(window, "visualViewport");
+        if (!descriptor?.configurable) return false;
+        window.__visualViewportDescriptor = descriptor;
+        const keyboardViewport = new EventTarget();
+        Object.defineProperty(keyboardViewport, "height", { value: Math.max(200, window.innerHeight - 330) });
+        Object.defineProperty(window, "visualViewport", { configurable: true, value: keyboardViewport });
+        document.activeElement?.dispatchEvent(new Event("focusin", { bubbles: true }));
+        return true;
+      });
+      if (keyboardMocked) {
+        await page.waitForFunction(() => document.querySelector("[data-mobile-shell]")?.getAttribute("data-keyboard-open") === "true");
+        if (await dock.isVisible()) throw new Error("Floating dock overlapped the search keyboard viewport");
+        await checkNoOverflow("search keyboard open");
+        await page.evaluate(() => {
+          const original = window.__visualViewportDescriptor;
+          if (original) Object.defineProperty(window, "visualViewport", original);
+          delete window.__visualViewportDescriptor;
+          document.activeElement?.dispatchEvent(new Event("focusin", { bubbles: true }));
+        });
+      }
+      await page.getByRole("button", { name: "Clear search" }).click();
+      await page.waitForFunction(() => document.querySelector(".explore-surface")?.getAttribute("data-explore-search") === "false");
+      await search.fill("no-match-query-zzq");
+      await page.waitForFunction(() => document.querySelector(".explore-surface")?.getAttribute("data-explore-search") === "true");
+      await page.waitForTimeout(100);
+      if (!(await page.getByText("Nothing matches these filters yet.").isVisible())) throw new Error("Explore empty state did not render for an unmatched query");
+      const createFromEmpty = page.getByRole("button", { name: "Create Scene" });
+      if (!(await createFromEmpty.isVisible())) throw new Error("Explore empty state did not offer Create Scene when media exists");
+      await createFromEmpty.click();
+      if (new URL(page.url()).pathname !== "/create") throw new Error("Explore empty-state Create Scene action did not hand off to Create Studio");
+      await page.goto(new URL("/explore", baseUrl).toString(), { waitUntil: "domcontentloaded" });
+      await page.waitForTimeout(250);
+      await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+      await page.waitForFunction(() => document.querySelector(".explore-surface")?.getAttribute("data-explore-filter") === "all");
+
+      await page.locator(".explore-media-tile").first().click();
+      if (!(await page.locator(".media-detail-backdrop").isVisible())) throw new Error("Explore media tile did not open existing Media Detail");
+      await page.getByRole("button", { name: "Close media detail" }).click();
+      await checkNoOverflow("media open/close");
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      await page.waitForTimeout(120);
+      const finalRow = await page.evaluate(() => ({
+        bottom: document.querySelector(".explore-media-tile:last-child")?.getBoundingClientRect().bottom ?? null,
+        dockTop: document.querySelector(".mobile-bottom-dock")?.getBoundingClientRect().top ?? null,
+      }));
+      if (finalRow.bottom !== null && finalRow.dockTop !== null && finalRow.bottom > finalRow.dockTop + 1) throw new Error(`Explore final media row cannot clear the floating dock: ${JSON.stringify(finalRow)}`);
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.waitForTimeout(100);
+
+      await page.getByRole("button", { name: "Open Flex Scenes menu" }).click();
+      if (!(await page.locator("#mobile-app-menu").isVisible())) throw new Error("Explore app menu failed to open");
+      const firstMediaHeight = await page.locator(".explore-media-tile").first().evaluate((node) => node.getBoundingClientRect().height);
+      await page.evaluate((distance) => window.scrollTo(0, distance), firstMediaHeight);
+      await page.waitForTimeout(220);
+      const afterMedia = await page.evaluate(() => ({ scrollY: scrollY, top: document.querySelector(".mobile-top-layer.is-flow .mobile-top-bar")?.getBoundingClientRect().bottom ?? null, dock: document.querySelector(".mobile-bottom-dock")?.getBoundingClientRect().top ?? null }));
+      if (afterMedia.scrollY < firstMediaHeight - 2 || afterMedia.top === null || afterMedia.top > 0 || afterMedia.dock === null) throw new Error(`Explore flow top bar or floating dock behavior failed: ${JSON.stringify(afterMedia)}`);
+      if (await page.locator("#mobile-app-menu").count()) throw new Error("Explore menu stayed open after its top-bar anchor left the viewport");
+      await page.evaluate((distance) => window.scrollTo(0, distance + window.innerHeight * 0.45), firstMediaHeight);
+      await page.waitForTimeout(100);
+      await page.screenshot({ path: path.join(outputDir, "mobile-v3-explore-scrolled-393.png"), animations: "disabled" });
+      await page.waitForTimeout(80);
+      await page.evaluate(() => window.scrollBy(0, -40));
+      if (await topBar.evaluate((node) => node.getBoundingClientRect().bottom > 0)) throw new Error("Explore top bar reappeared after a small upward scroll below document top");
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.waitForTimeout(80);
+      if (await topBar.evaluate((node) => { const rect = node.getBoundingClientRect(); return rect.top < 0 || rect.bottom > innerHeight; })) throw new Error("Explore top bar did not return at document top");
+      console.log(`Mobile Explore interactions passed ${JSON.stringify({ columns, filterScroll, afterMedia })}`);
+    }
     if (process.argv.includes("--home-topbar") && target === "/" && width === 393) {
       const topBar = page.locator(".mobile-top-layer.is-home .mobile-top-bar");
       const dock = page.locator(".mobile-bottom-dock");

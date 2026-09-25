@@ -65,7 +65,7 @@ export function PremiumExplore({
   const clearFilters = () => { setSearch(""); setFilter("All"); };
 
   return (
-    <section className="explore-surface" aria-labelledby="explore-title">
+    <section className="explore-surface" aria-labelledby="explore-title" data-explore-filter={filter.toLocaleLowerCase()} data-explore-search={Boolean(deferredSearch)}>
       <div className="explore-heading">
         <div><p className="explore-eyebrow">A universe of your own</p><h1 id="explore-title">Explore</h1></div>
         <span className="explore-count">{data.media.length} scenes <i /> {data.characters.length} characters</span>
@@ -73,7 +73,7 @@ export function PremiumExplore({
 
       <label className="explore-search">
         <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg>
-        <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search characters, scenes, collections…" aria-label="Search characters, scenes, collections, captions, prompts, and notes" />
+        <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search scenes, characters, collections" aria-label="Search characters, scenes, collections, captions, prompts, and notes" />
         {search && <button type="button" onClick={() => setSearch("")} aria-label="Clear search">×</button>}
       </label>
 
@@ -82,7 +82,7 @@ export function PremiumExplore({
       </div>
 
       {searching ? <div className="explore-grid" aria-label="Loading search results" aria-busy="true">{Array.from({ length: 8 }, (_, index) => <div className={`explore-skeleton explore-skeleton-${index % 4}`} key={index} />)}</div> : <>
-        {characters.length > 0 && <section className="explore-character-section" aria-label="Character results">
+        {characters.length > 0 && <section className={`explore-character-section ${filter === "Characters" ? "is-character-filter" : "is-search-strip"}`} aria-label="Character results">
           {filter !== "Characters" && <div className="explore-section-heading"><h2>Characters</h2><span>{characters.length}</span></div>}
           <div className="explore-character-grid">{characters.map((character) => {
             const scenes = data.media.filter((asset) => asset.characterId === character.id);
@@ -115,7 +115,7 @@ export function PremiumExplore({
             const character = data.characters.find((entry) => entry.id === asset.characterId);
             const collectionNames = collectionByMedia.get(asset.id);
             const ratio = sourceAspect(asset, index);
-            return <button className="explore-media-tile" key={asset.id} onClick={() => select(asset)} aria-label={`Open ${asset.title}${character ? ` by ${character.name}` : ""}`}>
+            return <button className="explore-media-tile" key={asset.id} onClick={() => select(asset)} data-media-type={asset.type} data-favorite={asset.favorite ? "true" : "false"} data-collection-member={collectionNames ? "true" : "false"} aria-label={`Open ${asset.title}${character ? ` by ${character.name}` : ""}`}>
               <img src={asset.posterUrl ?? asset.url} alt={asset.title} loading="lazy" decoding="async" sizes="(max-width: 639px) 48vw, (max-width: 1023px) 31vw, (max-width: 1439px) 24vw, 20vw" style={{ aspectRatio: ratio }} />
               <span className="explore-tile-shade" />
               {asset.type === "video" && <span className="explore-play-badge"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 6 10 6-10 6V6Z" /></svg></span>}
