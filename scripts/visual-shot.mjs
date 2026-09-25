@@ -118,7 +118,12 @@ const child = spawn(process.execPath, [path.join(root, "node_modules", "next", "
   detached: process.platform === "win32",
   stdio: "ignore",
   windowsHide: true,
-  env: { ...process.env, FLEX_SCENES_QA_WORKTREE_ID: worktreeId, ...(hostname === "0.0.0.0" ? { FLEX_SCENES_LAN_IP: urlHost } : {}) },
+  env: {
+    ...process.env,
+    FLEX_SCENES_QA_WORKTREE_ID: worktreeId,
+    ...((process.argv.includes("--reels-playback-qa") || process.argv.includes("--reels-immersive")) ? { FLEX_SCENES_LOCAL_QA: "1" } : {}),
+    ...(hostname === "0.0.0.0" ? { FLEX_SCENES_LAN_IP: urlHost } : {}),
+  },
 });
 
 let browser;
@@ -550,7 +555,53 @@ try {
         const video = document.querySelector('[data-reel-slide][data-active="true"] video');
         return video && !video.paused && video.currentTime < 0.4;
       });
-      console.log(`Real local video playback passed ${JSON.stringify({ fixture: firstMetrics, second: secondMetrics, resumed, seekPosition, ended, range: fixtureResponse, overlay: firstOverlay })}`);
+
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await page.waitForFunction(() => {
+        const video = document.querySelector('[data-reel-slide][data-active="true"] video');
+        return video && video.readyState >= 2 && !video.paused && video.currentTime > 0.25;
+      }, { timeout: 10000 });
+      await page.evaluate(() => { window.__qaNaturalFirstVideo = document.querySelector('[data-reel-slide][data-active="true"] video'); });
+      const manualPauseVideo = page.locator('[data-reel-slide][data-active="true"] video');
+      await manualPauseVideo.click({ position: { x: 180, y: 350 } });
+      await page.waitForFunction(() => document.querySelector('[data-reel-slide][data-active="true"] video')?.paused === true);
+      await page.waitForTimeout(900);
+      const manualPause = await page.evaluate(() => ({ active: document.querySelector('[data-reel-slide][data-active="true"]')?.getAttribute("data-reel-index"), paused: document.querySelector('[data-reel-slide][data-active="true"] video')?.paused }));
+      if (manualPause.active !== "0" || !manualPause.paused) throw new Error(`Manual pause incorrectly advanced the Reel: ${JSON.stringify(manualPause)}`);
+      await page.getByRole("button", { name: "Play reel" }).click();
+      await page.waitForFunction(() => document.querySelector('[data-reel-slide][data-active="true"] video')?.paused === false);
+
+      await page.waitForFunction(() => document.querySelector('[data-reel-slide][data-active="true"]')?.getAttribute("data-reel-index") === "1", { timeout: 10000 });
+      await page.waitForFunction(() => {
+        const video = document.querySelector('[data-reel-slide][data-active="true"] video');
+        const slides = document.querySelectorAll("[data-reel-slide]");
+        return video && video.readyState >= 2 && !video.paused && video.muted && slides.length === 2 && document.querySelectorAll("[data-reel-slide] video").length === 1;
+      }, { timeout: 10000 });
+      const autoAdvanced = await page.evaluate(() => ({
+        active: document.querySelector('[data-reel-slide][data-active="true"]')?.getAttribute("data-reel-index"),
+        videoCount: document.querySelectorAll("[data-reel-slide] video").length,
+        playing: !document.querySelector('[data-reel-slide][data-active="true"] video')?.paused,
+        muted: document.querySelector('[data-reel-slide][data-active="true"] video')?.muted,
+        firstVideoPaused: window.__qaNaturalFirstVideo?.paused,
+      }));
+      if (autoAdvanced.active !== "1" || autoAdvanced.videoCount !== 1 || !autoAdvanced.playing || !autoAdvanced.muted || !autoAdvanced.firstVideoPaused) throw new Error(`Natural completion did not auto-advance to the sole muted active video: ${JSON.stringify(autoAdvanced)}`);
+      await page.screenshot({ path: path.join(outputDir, "mobile-v3-reels-auto-advanced-393.png"), animations: "disabled" });
+      await page.waitForFunction(() => !!document.querySelector('[data-reel-slide][data-active="true"] button[aria-label="Replay reel"]'), { timeout: 10000 });
+      const finalReel = await page.evaluate(() => ({
+        active: document.querySelector('[data-reel-slide][data-active="true"]')?.getAttribute("data-reel-index"),
+        videoCount: document.querySelectorAll("[data-reel-slide] video").length,
+        ended: document.querySelector('[data-reel-slide][data-active="true"] video')?.ended,
+        paused: document.querySelector('[data-reel-slide][data-active="true"] video')?.paused,
+        replayVisible: !!document.querySelector('[data-reel-slide][data-active="true"] button[aria-label="Replay reel"]'),
+      }));
+      if (finalReel.active !== "1" || finalReel.videoCount !== 1 || !finalReel.ended || !finalReel.paused || !finalReel.replayVisible) throw new Error(`Final Reel wrapped or lost its replay state: ${JSON.stringify(finalReel)}`);
+      await page.screenshot({ path: path.join(outputDir, "mobile-v3-reels-auto-advance-final-393.png"), animations: "disabled" });
+      await page.getByRole("button", { name: "Replay reel" }).click();
+      await page.waitForFunction(() => {
+        const video = document.querySelector('[data-reel-slide][data-active="true"] video');
+        return video && !video.paused && video.currentTime < 0.4;
+      });
+      console.log(`Real local video playback and natural auto-advance passed ${JSON.stringify({ fixture: firstMetrics, second: secondMetrics, resumed, seekPosition, ended, manualPause, autoAdvanced, finalReel, range: fixtureResponse, overlay: firstOverlay })}`);
     }
 
     if (process.argv.includes("--reels-immersive") && target === "/reels") {
@@ -567,6 +618,13 @@ try {
       const firstSlide = page.locator('[data-reel-slide][data-reel-index="0"]');
       const fullScreen = await firstSlide.evaluate((node) => ({ height: node.getBoundingClientRect().height, viewport: innerHeight }));
       if (fullScreen.height !== fullScreen.viewport) throw new Error(`Immersive Reel does not fill the viewport: ${JSON.stringify(fullScreen)}`);
+      const identity = await firstSlide.evaluate((node) => ({
+        hasPortrait: node.querySelector(".reels-mobile-character img")?.naturalWidth > 0,
+        name: node.querySelector(".reels-mobile-character span")?.textContent?.trim(),
+        caption: node.querySelector(".reels-mobile-identity p")?.textContent?.trim(),
+        handles: node.querySelectorAll(".reels-mobile-handle").length,
+      }));
+      if (!identity.hasPortrait || !identity.name || !identity.caption || identity.handles !== 0 || /@[\w.-]+/.test(identity.name)) throw new Error(`Mobile Reel identity should show a portrait, name, caption, and no handle: ${JSON.stringify(identity)}`);
       if (await firstOverlay.evaluate((node) => getComputedStyle(node).position) !== "absolute") throw new Error("Reels top controls are not anchored in normal first-slide flow");
       await assertOverlayVisible(true, "feed top");
       if (await firstSlide.locator("video").count() !== 1 || await page.locator("[data-reel-slide] video").count() !== 1) throw new Error("QA mode should mount only the active Reel video");

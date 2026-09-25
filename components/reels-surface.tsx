@@ -310,7 +310,15 @@ export function PremiumReels({
             onPlay={() => { if (activeSlideRef.current === slideIndex) setPlaying(true); }}
             onPause={() => { if (activeSlideRef.current === slideIndex) setPlaying(false); }}
             onLoaded={() => { if (activeSlideRef.current === slideIndex) { setLoaded(true); setPlaying(true); } }}
-            onEnded={() => { if (activeSlideRef.current === slideIndex) { setPlaying(false); setEnded(true); setProgress(1); } }}
+            onEnded={() => {
+              if (activeSlideRef.current !== slideIndex) return;
+              setPlaying(false);
+              setEnded(true);
+              setProgress(1);
+              if (slideIndex < videos.length - 1) {
+                mobileFeedRef.current?.querySelector<HTMLElement>(`[data-reel-index="${slideIndex + 1}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }
+            }}
             onProgress={(value) => { if (activeSlideRef.current === slideIndex) setProgress(value); }}
             onSeek={(value) => { const video = videoRef.current; if (active && video?.duration) { video.currentTime = value * video.duration; setProgress(value); setEnded(false); } }}
             onToggle={() => { if (active) togglePlayback(); }}
@@ -486,7 +494,6 @@ function MobileReelSlide({ asset, index, active, playable, playing, loaded, ende
           <img src={character?.portraitUrl || "/fixtures/char-iona-portrait.svg"} alt="" loading={active ? "eager" : "lazy"} />
           <span>{character?.name ?? "A character"}</span>
         </button>
-        {character?.handle && <span className="reels-mobile-handle">{character.handle}</span>}
         {caption && <p className={captionExpanded ? "is-expanded" : ""}>{caption}</p>}
         {caption.length > 112 && <button className="reels-mobile-caption-more" onClick={toggleCaption}>{captionExpanded ? "Less" : "More"}</button>}
         {parent && <span className="reels-mobile-parent">From {parent.title}</span>}
