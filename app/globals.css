@@ -83,7 +83,7 @@ input::placeholder,textarea::placeholder { color:rgba(228,226,234,.42); }
  .mobile-message-identity small,.conversation-details-header small{overflow:hidden;color:#94919a;font-size:10px;text-overflow:ellipsis;white-space:nowrap}
  .mobile-message-chevron{margin-left:auto;color:#8e8a95;font-size:24px}
  .messages-mobile-header-create{width:42px;height:42px;border:0;border-radius:50%;background:#ffffff0d;color:#ff72ad;font-size:24px}
- .messages-mobile-history{min-height:0;flex:1;overflow-y:auto;overscroll-behavior:contain;padding:15px 12px 20px;scroll-behavior:smooth}
+ .messages-mobile-history{min-height:0;flex:1;overflow-y:auto;overscroll-behavior:contain;padding:15px 12px 20px;scroll-behavior:auto}
  .messages-mobile-message{margin:0 0 13px;scroll-margin:44px 0;transition:background .2s}
  .messages-mobile-message.is-highlighted{border-radius:14px;background:#ff2d7a24;box-shadow:0 0 0 7px #ff2d7a24}
  .messages-mobile-bubble-wrap{display:flex;align-items:flex-end;gap:7px}

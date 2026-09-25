@@ -347,6 +347,7 @@ try {
         if (!(await firstConversation.count())) throw new Error("Seeded QA database has no conversations");
         await firstConversation.click();
         await page.waitForSelector(".messages-mobile-thread");
+        await page.waitForFunction(() => { const node=document.querySelector(".messages-mobile-history");return Boolean(node&&node.scrollHeight-node.scrollTop-node.clientHeight<140); }, { timeout: 5000 });
         const threadChrome = await page.evaluate(() => ({ topBar: document.querySelector(".mobile-top-bar") && getComputedStyle(document.querySelector(".mobile-top-bar")).display !== "none", dockPresent: !!document.querySelector(".mobile-bottom-dock"), composerFont: getComputedStyle(document.querySelector(".messages-mobile-composer textarea")).fontSize }));
         if (threadChrome.topBar || threadChrome.dockPresent || threadChrome.composerFont !== "16px") throw new Error(`Thread chrome or composer size is incorrect: ${JSON.stringify(threadChrome)}`);
         await page.screenshot({ path: path.join(outputDir, "mobile-v3-message-thread-393.png"), animations: "disabled" });
