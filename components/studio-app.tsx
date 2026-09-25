@@ -217,7 +217,7 @@ export function StudioApp({
     />;
   }
   return (
-    <main className={`studio-shell mx-auto min-h-screen max-w-[1680px] bg-[#08090d] pb-20 text-zinc-100 md:grid md:grid-cols-[220px_minmax(0,1fr)] ${view === "home" ? "is-home-view" : ""} ${view === "explore" ? "mobile-explore-flow" : ""} ${view === "reels" ? "mobile-reels-view" : ""} ${isWideArchive ? "xl:grid-cols-[220px_minmax(0,1fr)]" : "xl:grid-cols-[220px_minmax(0,1fr)_300px]"} ${view === "messages" && mobileThreadActive ? "mobile-thread-active" : ""} md:pb-0`}>
+    <main className={`studio-shell mx-auto min-h-screen max-w-[1680px] bg-[#08090d] pb-20 text-zinc-100 md:grid md:grid-cols-[220px_minmax(0,1fr)] ${view === "home" ? "is-home-view" : ""} ${view === "explore" ? "mobile-explore-flow" : ""} ${view === "library" ? "mobile-library-flow" : ""} ${view === "reels" ? "mobile-reels-view" : ""} ${isWideArchive ? "xl:grid-cols-[220px_minmax(0,1fr)]" : "xl:grid-cols-[220px_minmax(0,1fr)_300px]"} ${view === "messages" && mobileThreadActive ? "mobile-thread-active" : ""} md:pb-0`}>
       <MobileAppShell view={view} characters={data.characters} character={active} navigate={(destination) => go(destination as View)} setCharacter={setActiveCharacter} messageThread={view === "messages" && mobileThreadActive} overlayOpen={Boolean(selected)} />
       <aside className="app-desktop-nav hidden border-r border-white/8 bg-[#0c0d12] p-5 md:block">
         <button
@@ -268,7 +268,7 @@ export function StudioApp({
       </aside>
       <section className="min-w-0 border-x border-white/5">
         {header}
-        <div className={`studio-page-content mx-auto w-full ${view === "home" ? "home-page-content" : ""} ${view === "reels" ? "mobile-reels-page-content" : ""} ${isWideArchive ? "max-w-none" : "max-w-[900px]"} p-4 md:p-7`}>
+        <div className={`studio-page-content mx-auto w-full ${view === "home" ? "home-page-content" : ""} ${view === "reels" ? "mobile-reels-page-content" : ""} ${view === "library" ? "mobile-library-page-content" : ""} ${isWideArchive ? "max-w-none" : "max-w-[900px]"} p-4 md:p-7`}>
           {view === "explore" && <PremiumExplore data={data} select={setSelected} openCharacter={(id) => { setActiveCharacter(id); go("character"); }} create={createFrom} />}{" "}
           {view === "create" && (
             <CapabilityCreate

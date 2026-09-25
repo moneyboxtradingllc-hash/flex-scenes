@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type { AppSnapshot, MediaAsset } from "@/lib/domain";
 
 type Filter = "All" | "Images" | "Videos" | "Favorites" | "References" | "Collections";
@@ -48,6 +48,7 @@ export function PremiumLibrary({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [status, setStatus] = useState("");
   const [importOpen, setImportOpen] = useState(false);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [importCharacter, setImportCharacter] = useState(data.characters[0]?.id ?? "");
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -127,6 +128,20 @@ export function PremiumLibrary({
   const openCollections = filter === "Collections";
   const emptyLibrary = data.media.length === 0;
 
+  useEffect(() => {
+    if (!mobileFiltersOpen && !creatingCollection && !renaming && !importOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMobileFiltersOpen(false);
+        setCreatingCollection(false);
+        setRenaming(false);
+        setImportOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [mobileFiltersOpen, creatingCollection, renaming, importOpen]);
+
   return <section className="library-vault" aria-labelledby="library-title">
     <header className="library-heading">
       <div><p className="library-kicker">Private media archive</p><h1 id="library-title">Library</h1><p className="library-subtitle">Every scene, reference, and import in one place.</p></div>
@@ -138,9 +153,12 @@ export function PremiumLibrary({
     <div className="library-toolbar">
       <div className="library-filter-row" role="group" aria-label="Library filters">{(["All", "Images", "Videos", "Favorites", "References", "Collections"] as Filter[]).map((value) => <button key={value} onClick={() => toggleFilter(value)} aria-pressed={filter === value} className={filter === value ? "active" : ""}>{value}{value === "Favorites" && <span>♥</span>}</button>)}</div>
       <div className="library-toolbar-controls"><label><span>Sort</span><select value={sort} onChange={(event) => setSort(event.target.value)}><option>Newest</option><option>Oldest</option><option>Character</option></select></label><details className="library-more-filters"><summary>More filters</summary><div><label>Source<select value={secondary} onChange={(event) => setSecondary(event.target.value as Secondary)}><option>Any source</option><option>Generated</option><option>Imported</option><option>Recent</option></select></label></div></details><button className={`library-multi-toggle ${bulkMode ? "active" : ""}`} onClick={() => { setBulkMode((value) => !value); setBulkCollectionId(null); setSelectedIds([]); }}>{bulkMode ? "Cancel select" : "Select"}</button></div>
+      <div className="library-mobile-controls"><button onClick={() => setMobileFiltersOpen(true)} aria-label="Open Library filters">Filter &amp; sort{(sort !== "Newest" || secondary !== "Any source") && <i aria-hidden="true" />}</button><button className={`library-multi-toggle ${bulkMode ? "active" : ""}`} onClick={() => { setBulkMode((value) => !value); setBulkCollectionId(null); setSelectedIds([]); }}>{bulkMode ? "Cancel" : "Select"}</button></div>
     </div>
 
-    <div className="library-characters" aria-label="Filter by character">{data.characters.map((entry) => { const count = data.media.filter((asset) => asset.characterId === entry.id).length; return <button key={entry.id} onClick={() => setCharacterId((current) => current === entry.id ? "" : entry.id)} aria-pressed={characterId === entry.id} className={characterId === entry.id ? "active" : ""}><img src={entry.portraitUrl} alt="" loading="lazy"/><span>{entry.name}</span><small>{count}</small></button>; })}{characterId && <button className="library-clear-character" onClick={() => setCharacterId("")}>Clear character</button>}</div>
+    {mobileFiltersOpen && <div className="library-mobile-sheet-backdrop" onMouseDown={() => setMobileFiltersOpen(false)}><section className="library-mobile-sheet" role="dialog" aria-modal="true" aria-labelledby="library-mobile-filter-title" onMouseDown={(event) => event.stopPropagation()}><div className="library-mobile-sheet-handle"/><div className="library-mobile-sheet-heading"><h2 id="library-mobile-filter-title">Filter &amp; sort</h2><button onClick={() => setMobileFiltersOpen(false)} aria-label="Close Library filters">×</button></div><label>Sort<select aria-label="Sort media" value={sort} onChange={(event) => setSort(event.target.value)}><option>Newest</option><option>Oldest</option><option>Character</option></select></label><label>Source<select aria-label="Filter by source" value={secondary} onChange={(event) => setSecondary(event.target.value as Secondary)}><option>Any source</option><option>Generated</option><option>Imported</option><option>Recent</option></select></label><button className="library-mobile-sheet-done" onClick={() => setMobileFiltersOpen(false)}>Done</button></section></div>}
+
+    <div className="library-characters" aria-label="Filter by character"><button className={`library-all-characters ${!characterId ? "active" : ""}`} onClick={() => setCharacterId("")} aria-pressed={!characterId}>All Characters</button>{data.characters.map((entry) => { const count = data.media.filter((asset) => asset.characterId === entry.id).length; return <button key={entry.id} onClick={() => setCharacterId((current) => current === entry.id ? "" : entry.id)} aria-pressed={characterId === entry.id} className={characterId === entry.id ? "active" : ""}><img src={entry.portraitUrl} alt="" loading="lazy"/><span>{entry.name}</span><small>{count}</small></button>; })}{characterId && <button className="library-clear-character" onClick={() => setCharacterId("")}>Clear character</button>}</div>
 
     {filter === "Collections" && <div className="library-collections-head"><div>{selectedCollection ? <><button className="library-back" onClick={() => setSelectedCollection(null)}>← Collections</button><h2>{collection?.name}</h2></> : <><h2>Your collections</h2><p>Keep favorite scenes together.</p></>}</div>{selectedCollection ? <div className="library-collection-actions"><button className="library-secondary-button" onClick={() => { setBulkCollectionId(selectedCollection); setFilter("All"); setSelectedCollection(null); setBulkMode(true); setSelectedIds([]); }}>＋ Add media</button><button className="library-secondary-button" onClick={() => { setCollectionName(collection?.name ?? ""); setRenaming(true); }}>Rename</button></div> : <button className="library-secondary-button" onClick={() => { setCollectionName(""); setCreatingCollection(true); }}>＋ New collection</button>}</div>}
 

@@ -48,6 +48,11 @@ const reelsImmersiveCaptures = [
   { width: 393, height: 852, name: "mobile-v3-reels-immersive-393" },
   { width: 430, height: 932, name: "mobile-v3-reels-immersive-430" },
 ];
+const libraryV3Captures = [
+  { width: 390, height: 844, name: "mobile-v3-library-390" },
+  { width: 393, height: 852, name: "mobile-v3-library-393" },
+  { width: 430, height: 932, name: "mobile-v3-library-430" },
+];
 const captures = process.argv.includes("--home-v2")
   ? referenceCaptures
   : process.argv.includes("--desktop-v3")
@@ -60,6 +65,8 @@ const captures = process.argv.includes("--home-v2")
     ? reelsV3Captures
   : process.argv.includes("--reels-immersive")
     ? reelsImmersiveCaptures
+  : process.argv.includes("--library-v3")
+    ? libraryV3Captures
   : process.argv.includes("--reels-playback-qa")
     ? reelsPlaybackQACaptures
   : process.argv.includes("--mobile-v3")
@@ -149,6 +156,20 @@ try {
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+    if (process.argv.includes("--library-v3") && target === "/library" && width === 393) {
+      const mutations = [];
+      await page.route("**/api/actions", async (route) => {
+        if (route.request().method() !== "POST") return route.continue();
+        mutations.push(JSON.parse(route.request().postData() ?? "{}"));
+        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, qaOnly: true }) });
+      });
+      await page.route("**/api/media/upload", async (route) => {
+        if (route.request().method() !== "POST") return route.continue();
+        mutations.push({ action: "upload-qa-stub" });
+        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, mediaId: "qa-only" }) });
+      });
+      page.__libraryMutations = mutations;
+    }
     if ((process.argv.includes("--reels-playback-qa") || process.argv.includes("--reels-immersive")) && target === "/reels") {
       await page.route("**/api/qa/reel-playback-fixture.mp4**", async (route) => {
         if (route.request().headers().range === "bytes=0-31") return route.continue();
@@ -602,6 +623,170 @@ try {
         return video && !video.paused && video.currentTime < 0.4;
       });
       console.log(`Real local video playback and natural auto-advance passed ${JSON.stringify({ fixture: firstMetrics, second: secondMetrics, resumed, seekPosition, ended, manualPause, autoAdvanced, finalReel, range: fixtureResponse, overlay: firstOverlay })}`);
+    }
+
+    if (process.argv.includes("--library-v3") && target === "/library" && width === 393) {
+      const dock = page.getByRole("navigation", { name: "Main navigation" });
+      const topBar = page.locator(".mobile-top-layer.is-flow .mobile-top-bar");
+      const filters = page.getByRole("group", { name: "Library filters" });
+      const search = page.getByRole("searchbox", { name: "Search media, characters, collections, and notes" });
+      const checkOverflow = async (stage) => {
+        const dimensions = await page.evaluate(() => ({ viewport: innerWidth, document: document.documentElement.scrollWidth, body: document.body.scrollWidth }));
+        if (dimensions.document > dimensions.viewport + 1 || dimensions.body > dimensions.viewport + 1) throw new Error(`Library horizontal overflow at ${stage}: ${JSON.stringify(dimensions)}`);
+        return dimensions;
+      };
+      const initial = await page.evaluate(() => ({
+        columns: getComputedStyle(document.querySelector(".library-grid")).gridTemplateColumns.split(" ").length,
+        topPosition: getComputedStyle(document.querySelector(".mobile-top-layer")).position,
+        viewport: innerWidth,
+        mediaCount: document.querySelectorAll(".library-tile").length,
+        collectionCount: document.querySelectorAll(".library-collection-card").length,
+        dockActive: document.querySelector('.mobile-bottom-dock [aria-label="Library"]')?.getAttribute("aria-current"),
+      }));
+      if (initial.columns !== 3 || initial.topPosition === "fixed" || initial.topPosition === "sticky" || initial.dockActive !== "page" || !await search.isVisible()) throw new Error(`Mobile Library shell/grid failed its initial contract: ${JSON.stringify(initial)}`);
+      await checkOverflow("All view");
+
+      const chip = (name) => filters.getByRole("button", { name, exact: false });
+      await chip("Images").click();
+      await page.waitForTimeout(80);
+      if (await page.locator(".library-tile").evaluateAll((nodes) => nodes.some((node) => node.querySelector("img")?.getAttribute("alt") === ""))) throw new Error("Images filter contains a tile without accessible media text");
+      await page.screenshot({ path: path.join(outputDir, "mobile-v3-library-images-393.png"), animations: "disabled" });
+      await chip("Videos").click();
+      await page.waitForTimeout(80);
+      if (await page.locator(".library-tile").evaluateAll((nodes) => nodes.some((node) => !node.querySelector(".library-video-mark")))) throw new Error("Videos filter contains a tile without a video marker");
+      await page.screenshot({ path: path.join(outputDir, "mobile-v3-library-videos-393.png"), animations: "disabled" });
+      await chip("Favorites").click();
+      await chip("References").click();
+      await page.screenshot({ path: path.join(outputDir, "mobile-v3-library-references-393.png"), animations: "disabled" });
+      await chip("All").click();
+
+      await search.fill("Mia");
+      await page.waitForTimeout(180);
+      if (!(await page.getByRole("button", { name: "Clear search" }).isVisible())) throw new Error("Library search did not expose its clear action");
+      await page.getByRole("button", { name: "Clear search" }).click();
+      await checkOverflow("search clear");
+
+      const characterStrip = page.getByRole("group", { name: "Filter by character" });
+      const characterButtons = characterStrip.locator("button[aria-pressed]");
+      if (await characterButtons.count() > 1) {
+        await characterButtons.nth(1).click();
+        if (await characterButtons.nth(1).getAttribute("aria-pressed") !== "true") throw new Error("Library character filter did not become active");
+        await characterStrip.getByRole("button", { name: "All Characters" }).click();
+      }
+
+      await page.locator(".library-mobile-controls").getByRole("button", { name: "Open Library filters" }).click();
+      const filterSheet = page.getByRole("dialog", { name: "Filter & sort" });
+      if (!(await filterSheet.isVisible())) throw new Error("Library filter and sort sheet did not open");
+      await page.screenshot({ path: path.join(outputDir, "mobile-v3-library-filters-393.png"), animations: "disabled" });
+      for (const value of ["Oldest", "Character", "Newest"]) await filterSheet.getByLabel("Sort media").selectOption(value);
+      for (const value of ["Generated", "Imported", "Recent", "Any source"]) await filterSheet.getByLabel("Filter by source").selectOption(value);
+      await filterSheet.getByRole("button", { name: "Done" }).click();
+
+      await page.evaluate(() => window.scrollTo(0, 900));
+      await page.waitForTimeout(80);
+      if (await topBar.evaluate((node) => node.getBoundingClientRect().bottom > 0)) throw new Error("Library top bar remained visible after scrolling down");
+      await page.screenshot({ path: path.join(outputDir, "mobile-v3-library-scrolled-393.png"), animations: "disabled" });
+      await page.evaluate(() => window.scrollTo(0, 820));
+      await page.waitForTimeout(80);
+      if (await topBar.evaluate((node) => node.getBoundingClientRect().bottom > 0)) throw new Error("Library top bar reappeared after a small upward scroll mid-page");
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.waitForTimeout(100);
+      if (await topBar.evaluate((node) => { const rect = node.getBoundingClientRect(); return rect.top < 0 || rect.bottom > innerHeight; })) throw new Error("Library top bar did not return at absolute document top");
+
+      await chip("Collections").click();
+      await page.screenshot({ path: path.join(outputDir, "mobile-v3-library-collections-393.png"), animations: "disabled" });
+      const collectionCard = page.locator(".library-collection-card").first();
+      if (await collectionCard.count()) {
+        await collectionCard.click();
+        await page.screenshot({ path: path.join(outputDir, "mobile-v3-library-collection-open-393.png"), animations: "disabled" });
+        const removeItem = page.locator(".library-remove-item").first();
+        if (await removeItem.count()) {
+          await removeItem.click();
+          await page.waitForTimeout(80);
+          if (!page.__libraryMutations.some((entry) => entry.action === "collection-remove")) throw new Error("Collection item Remove action did not reach the mocked action boundary");
+        }
+        await page.getByRole("button", { name: "Rename", exact: true }).click();
+        const renameDialog = page.getByRole("dialog", { name: "Rename collection" });
+        if (!(await renameDialog.isVisible())) throw new Error("Collection rename sheet did not open");
+        await renameDialog.getByPlaceholder("Collection name").fill("QA rename intercepted");
+        await renameDialog.getByRole("button", { name: "Save" }).click();
+        await page.waitForFunction(() => !document.querySelector('[role="dialog"][aria-labelledby="library-collection-dialog-title"]'));
+        if (!page.__libraryMutations.some((entry) => entry.action === "collection-rename")) throw new Error("Collection rename did not reach the mocked action boundary");
+        await page.locator(".library-back").click();
+      } else {
+        await page.screenshot({ path: path.join(outputDir, "mobile-v3-library-collection-open-393.png"), animations: "disabled" });
+      }
+      await page.getByRole("button", { name: "New collection", exact: false }).click();
+      const createDialog = page.getByRole("dialog", { name: "New collection" });
+      await createDialog.getByPlaceholder("Collection name").fill("QA Collection intercepted");
+      await createDialog.getByRole("button", { name: "Create", exact: true }).click();
+      await page.waitForFunction(() => !document.querySelector('[role="dialog"][aria-labelledby="library-collection-dialog-title"]'));
+      if (!page.__libraryMutations.some((entry) => entry.action === "collection-create")) throw new Error("Collection create did not reach the mocked action boundary");
+
+      await chip("All").click();
+      await page.locator(".library-mobile-controls").getByRole("button", { name: "Select", exact: true }).click();
+      const tile = page.locator(".library-tile").first();
+      if (await tile.count()) {
+        await tile.evaluate((node) => node.click());
+        await page.screenshot({ path: path.join(outputDir, "mobile-v3-library-select-393.png"), animations: "disabled" });
+        const tray = page.locator(".library-bulk-bar");
+        if (!(await tray.isVisible()) || !(await tray.getByText("1 selected").isVisible())) throw new Error("Bulk selection did not show its selected count tray");
+        const trayGeometry = await tray.evaluate((node) => ({ ...node.getBoundingClientRect().toJSON(), dockTop: document.querySelector(".mobile-bottom-dock").getBoundingClientRect().top }));
+        if (trayGeometry.height > 170 || trayGeometry.bottom > trayGeometry.dockTop + 1) throw new Error(`Bulk action tray is oversized or obscures the floating dock: ${JSON.stringify(trayGeometry)}`);
+        await tray.getByRole("button", { name: "Favorite", exact: true }).click();
+        if (!page.__libraryMutations.some((entry) => entry.action === "favorite")) throw new Error("Bulk Favorite action did not reach the mocked action boundary");
+        await page.waitForFunction(() => !document.querySelector(".library-bulk-bar"));
+        const favoriteTile = page.locator(".library-tile:has(.library-favorite-mark)").first();
+        if (await favoriteTile.count()) {
+          await page.locator(".library-mobile-controls").getByRole("button", { name: "Select", exact: true }).click();
+          await favoriteTile.evaluate((node) => node.click());
+          await page.locator(".library-bulk-bar").getByRole("button", { name: "Remove Favorite", exact: true }).click();
+          if (!page.__libraryMutations.some((entry) => entry.action === "favorite")) throw new Error("Bulk Remove Favorite did not reach the mocked action boundary");
+          await page.waitForFunction(() => !document.querySelector(".library-bulk-bar"));
+        }
+        await page.locator(".library-mobile-controls").getByRole("button", { name: "Select", exact: true }).click();
+        await page.locator(".library-tile").first().evaluate((node) => node.click());
+        await page.locator(".library-bulk-bar").getByRole("button", { name: "Add as Reference" }).click();
+        if (!page.__libraryMutations.some((entry) => entry.action === "reference")) throw new Error("Bulk Reference action did not reach the mocked action boundary");
+        await page.waitForFunction(() => !document.querySelector(".library-bulk-bar"));
+        await page.locator(".library-mobile-controls").getByRole("button", { name: "Select", exact: true }).click();
+        await page.locator(".library-tile").first().evaluate((node) => node.click());
+        const collectionPicker = page.getByLabel("Add selected to collection");
+        if (await collectionPicker.locator("option").count() > 1) {
+          await collectionPicker.selectOption({ index: 1 });
+          if (!page.__libraryMutations.some((entry) => entry.action === "collection-add")) throw new Error("Bulk Add to Collection did not reach the mocked action boundary");
+          await page.waitForFunction(() => !document.querySelector(".library-bulk-bar"));
+        }
+      } else {
+        await page.screenshot({ path: path.join(outputDir, "mobile-v3-library-select-393.png"), animations: "disabled" });
+      }
+
+      await page.getByRole("button", { name: /Import media/ }).click();
+      const importDialog = page.getByRole("dialog", { name: "Import image or video" });
+      if (!(await importDialog.isVisible())) throw new Error("Library import sheet did not open");
+      await page.screenshot({ path: path.join(outputDir, "mobile-v3-library-import-393.png"), animations: "disabled" });
+      if (await importDialog.locator("select").count()) await importDialog.locator("select").selectOption({ index: 0 });
+      await importDialog.locator('input[type="file"]').setInputFiles({ name: "qa-local.png", mimeType: "image/png", buffer: Buffer.from("qa-only") });
+      await page.waitForFunction(() => !document.querySelector('[role="dialog"][aria-labelledby="library-import-title"]'));
+      if (!page.__libraryMutations.some((entry) => entry.action === "upload-qa-stub")) throw new Error("Local import flow did not use the mocked upload boundary");
+
+      const detailTile = page.locator(".library-tile").first();
+      await detailTile.evaluate((node) => node.click());
+      const libraryReturnState = await page.evaluate(() => ({ scrollY: window.scrollY, activeFilter: document.querySelector(".library-filter-row button.active")?.textContent?.trim() }));
+      if (!(await page.locator(".media-detail-backdrop").isVisible())) throw new Error("Library tile did not open existing Media Detail");
+      await page.getByRole("button", { name: "Close media detail" }).click();
+      if (await page.locator(".media-detail-backdrop").count()) throw new Error("Closing Media Detail did not restore the Library view");
+      const restoredLibraryState = await page.evaluate(() => ({ scrollY: window.scrollY, activeFilter: document.querySelector(".library-filter-row button.active")?.textContent?.trim() }));
+      if (restoredLibraryState.activeFilter !== libraryReturnState.activeFilter || restoredLibraryState.scrollY !== libraryReturnState.scrollY) throw new Error(`Media Detail did not return to the same Library filter and scroll position: ${JSON.stringify({ libraryReturnState, restoredLibraryState })}`);
+
+      await page.getByRole("button", { name: "Create Scene", exact: true }).click();
+      if (new URL(page.url()).pathname !== "/create") throw new Error("Library Create Scene action did not hand off to Create Studio");
+      for (const route of ["/", "/explore", "/reels", "/library", "/messages", "/create", "/character"]) {
+        const response = await page.request.get(new URL(route, baseUrl).toString());
+        if (response.status() !== 200) throw new Error(`Library route smoke failed for ${route}: ${response.status()}`);
+      }
+      await checkOverflow("final interaction sequence");
+      console.log(`Mobile Library QA passed ${JSON.stringify({ ...initial, mutationsMocked: page.__libraryMutations.length, routes: 7, topBar: "flow-only, returns at absolute top", detailReturn: true })}`);
     }
 
     if (process.argv.includes("--reels-immersive") && target === "/reels") {
