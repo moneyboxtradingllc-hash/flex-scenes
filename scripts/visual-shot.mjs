@@ -58,6 +58,11 @@ const libraryPolishCaptures = [
   { width: 393, height: 852, name: "mobile-v3-library-polish-393" },
   { width: 430, height: 932, name: "mobile-v3-library-polish-430" },
 ];
+const messagesHubCaptures = [
+  { width: 390, height: 844, name: "mobile-v3-messages-list-390" },
+  { width: 393, height: 852, name: "mobile-v3-messages-list-393" },
+  { width: 430, height: 932, name: "mobile-v3-messages-list-430" },
+];
 const captures = process.argv.includes("--home-v2")
   ? referenceCaptures
   : process.argv.includes("--desktop-v3")
@@ -74,6 +79,8 @@ const captures = process.argv.includes("--home-v2")
     ? libraryV3Captures
   : process.argv.includes("--library-polish")
     ? libraryPolishCaptures
+  : process.argv.includes("--messages-hub-v3")
+    ? messagesHubCaptures
   : process.argv.includes("--reels-playback-qa")
     ? reelsPlaybackQACaptures
   : process.argv.includes("--mobile-v3")
@@ -136,6 +143,7 @@ const child = spawn(process.execPath, [path.join(root, "node_modules", "next", "
     ...process.env,
     FLEX_SCENES_QA_WORKTREE_ID: worktreeId,
     ...((process.argv.includes("--reels-playback-qa") || process.argv.includes("--reels-immersive") || process.argv.includes("--library-polish")) ? { FLEX_SCENES_LOCAL_QA: "1" } : {}),
+    ...(process.argv.includes("--messages-hub-v3") ? { FLEX_SCENES_QA_DATA_DIR: path.join(root, ".artifacts", `messages-hub-qa-data-${worktreeId.slice(0, 12)}`) } : {}),
     ...(hostname === "0.0.0.0" ? { FLEX_SCENES_LAN_IP: urlHost } : {}),
   },
 });
@@ -154,7 +162,7 @@ try {
   browser = await chromium.launch({ headless: true });
   for (const capture of captures) {
     const { width, height } = capture;
-    const page = await browser.newPage({
+    let page = await browser.newPage({
       viewport: { width, height },
       deviceScaleFactor: width < 768 ? 2 : 1,
       isMobile: width < 768,
@@ -324,6 +332,111 @@ try {
     }
     await page.screenshot({ path: output, animations: "disabled" });
     console.log(`${output} ${JSON.stringify(metrics)}`);
+    if (process.argv.includes("--messages-hub-v3") && target === "/messages") {
+      const sizing = await page.evaluate(() => ({ viewport: innerWidth, document: document.documentElement.scrollWidth, inputFont: getComputedStyle(document.querySelector(".messages-mobile-search input")).fontSize, dock: !!document.querySelector(".mobile-bottom-dock"), dockDisplay: getComputedStyle(document.querySelector(".mobile-bottom-dock") ?? document.body).display }));
+      if (width < 768 && sizing.document > sizing.viewport + 1) throw new Error(`Messages list overflow at ${width}px: ${JSON.stringify(sizing)}`);
+      if (width < 768 && sizing.inputFont !== "16px") throw new Error(`Messages search should stay at 16px: ${JSON.stringify(sizing)}`);
+      if (width < 768 && (sizing.dock || await page.locator(".mobile-bottom-dock:visible").count())) throw new Error("Messages route unexpectedly displays the shared bottom dock");
+      if (width === 393) {
+        const directorRequests = [];
+        await page.route("**/api/director", async (route) => {
+          if (route.request().method() === "POST") directorRequests.push(JSON.parse(route.request().postData() ?? "{}"));
+          await route.continue();
+        });
+        const firstConversation = page.locator(".messages-mobile-row").first();
+        if (!(await firstConversation.count())) throw new Error("Seeded QA database has no conversations");
+        await firstConversation.click();
+        await page.waitForSelector(".messages-mobile-thread");
+        const threadChrome = await page.evaluate(() => ({ topBar: document.querySelector(".mobile-top-bar") && getComputedStyle(document.querySelector(".mobile-top-bar")).display !== "none", dockPresent: !!document.querySelector(".mobile-bottom-dock"), composerFont: getComputedStyle(document.querySelector(".messages-mobile-composer textarea")).fontSize }));
+        if (threadChrome.topBar || threadChrome.dockPresent || threadChrome.composerFont !== "16px") throw new Error(`Thread chrome or composer size is incorrect: ${JSON.stringify(threadChrome)}`);
+        await page.screenshot({ path: path.join(outputDir, "mobile-v3-message-thread-393.png"), animations: "disabled" });
+
+        const plus = page.getByRole("button", { name: "More conversation actions" });
+        await plus.click();
+        await page.getByLabel("Attach media").selectOption({ index: 1 });
+        if (!(await page.locator(".messages-mobile-attachment-chip").isVisible())) throw new Error("Composer media selection did not show the selected attachment");
+        await page.screenshot({ path: path.join(outputDir, "mobile-v3-message-composer-393.png"), animations: "disabled" });
+        await plus.click();
+        await page.getByLabel("Message", { exact: true }).fill("QA note: a blue lantern by the window.");
+        await page.getByRole("button", { name: "Send message" }).click();
+        await page.waitForFunction(() => [...document.querySelectorAll(".messages-mobile-message.user p")].some((node) => node.textContent.includes("blue lantern")), { timeout: 10000 });
+        await page.waitForFunction(() => document.querySelector(".messages-mobile-streaming") === null, { timeout: 10000 });
+        if (!directorRequests.some((entry) => entry.action === "message" && entry.mediaId)) throw new Error(`The existing Director message path did not submit text with the selected media: ${JSON.stringify(directorRequests)}`);
+        await page.getByRole("button", { name: "More conversation actions" }).click();
+        await page.getByRole("button", { name: "Ask for an idea" }).click();
+        await page.waitForSelector(".messages-mobile-thread .message-proposal-actions-mobile", { timeout: 12000 });
+        await page.screenshot({ path: path.join(outputDir, "mobile-v3-message-thread-proposal-393.png"), animations: "disabled" });
+        await page.locator(".mobile-message-identity").click();
+        await page.waitForSelector(".conversation-details-mobile");
+        await page.screenshot({ path: path.join(outputDir, "mobile-v3-conversation-details-393.png"), animations: "disabled" });
+        const detailsOverflow = await page.evaluate(() => ({ viewport: innerWidth, document: document.documentElement.scrollWidth, broken: [...document.querySelectorAll(".conversation-details-mobile img")].filter((img) => img.complete && img.naturalWidth === 0).length }));
+        if (detailsOverflow.document > detailsOverflow.viewport + 1 || detailsOverflow.broken) throw new Error(`Conversation details media integrity failed: ${JSON.stringify(detailsOverflow)}`);
+        await page.locator(".conversation-details-mobile").evaluate((node) => { node.scrollTop = node.scrollHeight; });
+        await page.screenshot({ path: path.join(outputDir, "mobile-v3-conversation-shared-media-393.png"), animations: "disabled" });
+
+        await page.getByRole("button", { name: "Search Chat" }).click();
+        await page.getByRole("searchbox", { name: "Search this conversation" }).fill("blue lantern");
+        await page.waitForSelector(".conversation-search-results button");
+        await page.screenshot({ path: path.join(outputDir, "mobile-v3-conversation-search-393.png"), animations: "disabled" });
+        await page.locator(".conversation-search-results button").first().click();
+        await page.waitForSelector(".messages-mobile-message.is-highlighted");
+        await page.locator(".mobile-message-identity").click();
+        await page.getByRole("button", { name: "Character Hub" }).click();
+        await page.waitForSelector(".character-hub-mobile");
+        const hubBadges = await page.locator(".character-hub-mobile [data-testid=library-media-thumbnail] video").count();
+        const hubImages = await page.evaluate(() => [...document.querySelectorAll(".character-hub-mobile img")].filter((img) => img.complete && img.naturalWidth === 0).length);
+        if (hubImages) throw new Error(`Character Hub has broken images: ${hubImages}`);
+        await page.screenshot({ path: path.join(outputDir, "mobile-v3-character-hub-393.png"), animations: "disabled" });
+        const hubMediaGrid = await page.evaluate(() => { const grid = document.querySelector(".character-mobile-grid"); return { overflow: document.documentElement.scrollWidth > innerWidth, columns: grid ? getComputedStyle(grid).gridTemplateColumns.split(" ").length : null }; });
+        if (hubMediaGrid.overflow || hubMediaGrid.columns !== 3) throw new Error(`Character Hub media grid contract failed: ${JSON.stringify(hubMediaGrid)}`);
+        await page.getByRole("button", { name: "Videos", exact: true }).click();
+        await page.screenshot({ path: path.join(outputDir, "mobile-v3-character-hub-videos-393.png"), animations: "disabled" });
+        await page.getByRole("button", { name: /References/ }).click();
+        await page.screenshot({ path: path.join(outputDir, "mobile-v3-character-hub-references-393.png"), animations: "disabled" });
+        await page.getByRole("button", { name: "Collections", exact: true }).click();
+        await page.screenshot({ path: path.join(outputDir, "mobile-v3-character-hub-collections-393.png"), animations: "disabled" });
+        const collectionCard = page.locator(".character-mobile-collections > button").first();
+        if (await collectionCard.count()) {
+          const collectionName = await collectionCard.locator("b").textContent();
+          await collectionCard.click();
+          await page.waitForSelector(".character-mobile-collection-detail");
+          if (!(await page.locator(".character-mobile-collection-detail h2").textContent())?.includes(collectionName ?? "")) throw new Error("Character Hub collection did not open its matching assets");
+          await page.locator(".character-mobile-collection-detail > button").click();
+        }
+        const hubGrid = await page.evaluate(() => { const grid=document.querySelector(".character-mobile-grid");return { overflow: document.documentElement.scrollWidth > innerWidth, highlights: document.querySelectorAll(".character-hub-mobile .character-mobile-highlight").length, columns: grid ? getComputedStyle(grid).gridTemplateColumns.split(" ").length : null, collectionCards: document.querySelectorAll(".character-mobile-collections>button").length }; });
+        if (hubGrid.overflow || hubGrid.highlights || hubGrid.columns !== null && hubGrid.columns !== 3) throw new Error(`Character Hub mobile layout contract failed: ${JSON.stringify(hubGrid)}`);
+        await page.locator(".character-mobile-top button").first().click();
+        await page.waitForSelector(".conversation-details-mobile");
+        await page.locator(".conversation-details-header button").first().click();
+        await page.waitForSelector(".messages-mobile-thread");
+        await page.getByRole("button", { name: "Back to messages" }).click();
+        await page.waitForSelector(".messages-mobile-list");
+        await page.locator(".messages-mobile-row").first().click();
+        await page.waitForSelector(".messages-mobile-thread");
+        await page.locator(".messages-mobile-thread").getByRole("button", { name: "Create This Scene" }).click();
+        await page.waitForFunction(() => location.pathname === "/create", { timeout: 5000 });
+        await page.close();
+        page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+        await page.goto(new URL("/character", baseUrl).toString(), { waitUntil: "domcontentloaded" });
+        await page.waitForSelector(".character-hub-mobile");
+        await page.locator(".character-mobile-actions button[aria-label='Character settings']").click();
+        await page.getByRole("heading", { name: "Character Settings" }).waitFor({ timeout: 5000 });
+        await page.close();
+        page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+        await page.goto(new URL("/character", baseUrl).toString(), { waitUntil: "domcontentloaded" });
+        await page.waitForSelector(".character-hub-mobile");
+        await page.locator(".character-mobile-actions").getByRole("button", { name: "Message" }).click();
+        await page.waitForSelector(".messages-mobile-thread");
+        console.log(`Messages/Character Hub mobile flow passed ${JSON.stringify({ width, sizing, threadChrome, detailsOverflow, hubBadges, hubMediaGrid, hubGrid, directorActions: directorRequests.map((entry) => entry.action) })}`);
+      }
+      if (width === 390 || width === 430) {
+        await page.goto(new URL("/character", baseUrl).toString(), { waitUntil: "domcontentloaded" });
+        await page.waitForSelector(".character-hub-mobile");
+        const hubOverflow = await page.evaluate(() => ({ viewport: innerWidth, document: document.documentElement.scrollWidth, columns: getComputedStyle(document.querySelector(".character-mobile-grid")).gridTemplateColumns.split(" ").length }));
+        if (hubOverflow.document > hubOverflow.viewport + 1 || hubOverflow.columns !== 3) throw new Error(`Character Hub viewport check failed: ${JSON.stringify(hubOverflow)}`);
+        await page.screenshot({ path: path.join(outputDir, `mobile-v3-character-hub-${width}.png`), animations: "disabled" });
+      }
+    }
     if (process.argv.includes("--explore-v3") && target === "/explore" && width === 393) {
       const search = page.getByRole("searchbox", { name: "Search characters, scenes, collections, captions, prompts, and notes" });
       const filters = page.getByRole("group", { name: "Explore filters" });
@@ -1290,7 +1403,11 @@ try {
   if (process.argv.includes("--keep-server")) {
     child.unref();
   } else if (child.pid) {
-    try { child.kill("SIGTERM"); } catch {}
+    if (process.platform === "win32") {
+      try { execFileSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore" }); } catch {}
+    } else {
+      try { child.kill("SIGTERM"); } catch {}
+    }
     child.unref();
   }
 }

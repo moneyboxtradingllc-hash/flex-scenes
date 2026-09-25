@@ -81,6 +81,9 @@ export function StudioApp({
   );
   const [selected, setSelected] = useState<MediaAsset | null>(null);
   const [mobileThreadActive, setMobileThreadActive] = useState(false);
+  const [messagesEntryPage, setMessagesEntryPage] = useState<"list" | "thread" | "details">("list");
+  const [characterHubReturn, setCharacterHubReturn] = useState<{ conversationId: string; characterId: string } | null>(null);
+  const characterHubReturnView = useRef<View>("home");
   const [selectedJobId, setSelectedJobId] = useState(route.split("/")[1] ?? "");
   const [jobConnectionError, setJobConnectionError] = useState(false);
   const [targetConversationId, setTargetConversationId] = useState("");
@@ -105,6 +108,7 @@ export function StudioApp({
     setSelected((current) => current ? next.media.find((asset) => asset.id === current.id) ?? current : null);
   };
   const go = (next: View, context?: typeof createContext) => {
+    if (next === "character" && view !== "settings") characterHubReturnView.current = view;
     if (next !== view) previousView.current = view;
     setView(next);
     if (context) setCreateContext(context);
@@ -139,7 +143,22 @@ export function StudioApp({
     const timer = window.setInterval(() => void poll(), 1100);
     return () => { alive = false; window.clearInterval(timer); };
   }, [activeJobKey, selectedJobId, view]);
-  const openConversation = (id: string) => { setTargetConversationId(id); go("messages"); };
+  const openConversation = (id: string) => { setTargetConversationId(id); setMessagesEntryPage("thread"); go("messages"); };
+  const openCharacterHubFromConversation = (characterId: string, conversationId: string) => {
+    characterHubReturnView.current = "messages";
+    setActiveCharacter(characterId);
+    setTargetConversationId(conversationId);
+    setMessagesEntryPage("details");
+    setCharacterHubReturn({ conversationId, characterId });
+    go("character");
+  };
+  const messageCharacter = (characterId: string) => {
+    setCharacterHubReturn(null);
+    const conversation = data.conversations.find((item) => item.characterId === characterId);
+    if (conversation) { setTargetConversationId(conversation.id); setMessagesEntryPage("thread"); }
+    else { setTargetConversationId(""); setMessagesEntryPage("list"); }
+    go("messages");
+  };
   const active =
     data.characters.find((c) => c.id === activeCharacter) ?? data.characters[0];
   const isWideArchive = view === "explore" || view === "library";
@@ -218,7 +237,7 @@ export function StudioApp({
   }
   return (
     <main className={`studio-shell mx-auto min-h-screen max-w-[1680px] bg-[#08090d] pb-20 text-zinc-100 md:grid md:grid-cols-[220px_minmax(0,1fr)] ${view === "home" ? "is-home-view" : ""} ${view === "explore" ? "mobile-explore-flow" : ""} ${view === "library" ? "mobile-library-flow" : ""} ${view === "reels" ? "mobile-reels-view" : ""} ${isWideArchive ? "xl:grid-cols-[220px_minmax(0,1fr)]" : "xl:grid-cols-[220px_minmax(0,1fr)_300px]"} ${view === "messages" && mobileThreadActive ? "mobile-thread-active" : ""} md:pb-0`}>
-      <MobileAppShell view={view} characters={data.characters} character={active} navigate={(destination) => go(destination as View)} setCharacter={setActiveCharacter} messageThread={view === "messages" && mobileThreadActive} overlayOpen={Boolean(selected)} />
+      <MobileAppShell view={view} characters={data.characters} character={active} navigate={(destination) => { if (destination === "messages") { setTargetConversationId(""); setMessagesEntryPage("list"); setCharacterHubReturn(null); } go(destination as View); }} setCharacter={setActiveCharacter} messageThread={view === "messages" && mobileThreadActive} overlayOpen={Boolean(selected)} />
       <aside className="app-desktop-nav hidden border-r border-white/8 bg-[#0c0d12] p-5 md:block">
         <button
           onClick={() => go("home")}
@@ -300,7 +319,10 @@ export function StudioApp({
               create={createFrom}
               refresh={refresh}
               initialConversationId={targetConversationId}
+              initialMobilePage={messagesEntryPage}
               onMobileThreadChange={setMobileThreadActive}
+              onOpenCharacterHub={openCharacterHubFromConversation}
+              select={setSelected}
             />
           )}{" "}
           {view === "library" && <PremiumLibrary data={data} select={setSelected} refresh={refresh} create={createFrom} />}{" "}
@@ -311,6 +333,15 @@ export function StudioApp({
               select={setSelected}
               create={createFrom}
               go={go}
+              onBack={() => {
+                if (characterHubReturn) {
+                  setTargetConversationId(characterHubReturn.conversationId);
+                  setMessagesEntryPage("details");
+                  setCharacterHubReturn(null);
+                  go("messages");
+                } else go(characterHubReturnView.current);
+              }}
+              openMessages={messageCharacter}
             />
           )}{" "}
           {view === "settings" && (
@@ -1538,6 +1569,8 @@ function CharacterHub({
   select,
   create,
   go,
+  onBack,
+  openMessages,
 }: {
   data: AppSnapshot;
   character?: AppSnapshot["characters"][number];
@@ -1548,6 +1581,8 @@ function CharacterHub({
     characterId?: string,
   ) => void;
   go: (x: View) => void;
+  onBack?: () => void;
+  openMessages?: (characterId: string) => void;
 }) {
   return (
     <PremiumCharacterHub
@@ -1556,6 +1591,8 @@ function CharacterHub({
       select={select}
       create={create}
       go={go}
+      onBack={onBack}
+      openMessages={openMessages}
     />
   );
 }

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-const dataDir = path.join(process.cwd(), "data");
+const dataDir = process.env.FLEX_SCENES_QA_DATA_DIR ?? path.join(process.cwd(), "data");
 fs.mkdirSync(dataDir, { recursive: true });
 const db = new DatabaseSync(path.join(dataDir, "flex-scenes.db"));
 db.exec("PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;");
