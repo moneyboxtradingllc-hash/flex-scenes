@@ -1,0 +1,81 @@
+.mobile-app-shell { display:none; }
+
+@media (max-width: 767px) {
+  .mobile-app-shell { display:block;position:relative;z-index:120; }
+  .media-detail-backdrop { z-index:160 !important; }
+  .mobile-top-layer { position:fixed;top:0;right:0;left:0;z-index:120;pointer-events:none; }
+  .mobile-top-cluster { position:relative;height:52px;margin:calc(env(safe-area-inset-top,0px) + 8px) 12px 0;pointer-events:none; }
+  .mobile-top-bar { display:flex;height:48px;align-items:center;justify-content:space-between;gap:8px;border:1px solid rgba(255,255,255,.12);border-radius:17px;background:rgba(8,8,11,.76);padding:0 7px 0 12px;box-shadow:0 5px 20px rgba(0,0,0,.23);backdrop-filter:blur(18px) saturate(135%);-webkit-backdrop-filter:blur(18px) saturate(135%);pointer-events:auto; }
+  .mobile-top-title { display:flex;min-width:0;min-height:44px;align-items:center;gap:6px;border:0;border-radius:11px;background:transparent;padding:0 4px;color:#fff;text-align:left;font-size:14px;font-weight:760;letter-spacing:-.035em;white-space:nowrap; }
+  .mobile-brand-wordmark { display:flex;gap:3px;white-space:nowrap;font-size:13px;font-style:italic;font-weight:950;letter-spacing:-.075em;transform:skew(-7deg); }
+  .mobile-brand-wordmark b { font-weight:1000; }
+  .mobile-title-chevron { color:#b6b3bd;font-size:16px;line-height:1; }
+  .mobile-top-actions { display:flex;flex:none;align-items:center;gap:1px; }
+  .mobile-top-actions > button { position:relative;display:grid;width:42px;height:42px;flex:none;place-items:center;border:0;border-radius:50%;background:transparent;color:#f6f4f8; }
+  .mobile-top-actions > button svg { width:21px;height:21px; }
+  .mobile-top-actions > button i { position:absolute;top:8px;right:8px;width:7px;height:7px;border-radius:50%;background:#ff2d7a; }
+  .mobile-top-actions .mobile-top-character { width:38px;height:38px;overflow:hidden;border:1.5px solid #ff2d7a;background:#17151c;padding:2px; }
+  .mobile-top-character img { width:100%;height:100%;border-radius:50%;object-fit:cover; }
+  .mobile-app-menu { position:absolute;top:calc(100% + 8px);left:0;width:min(304px,calc(100vw - 24px));max-height:calc(100dvh - env(safe-area-inset-top,0px) - 100px);overflow:auto;border:1px solid rgba(255,255,255,.13);border-radius:19px;background:rgba(13,13,17,.95);padding:9px;box-shadow:0 16px 42px rgba(0,0,0,.42);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);pointer-events:auto;overscroll-behavior:contain; }
+  .mobile-menu-active-character { display:flex;min-height:63px;align-items:center;gap:8px;border-bottom:1px solid rgba(255,255,255,.1);padding:3px 2px 9px; }
+  .mobile-menu-character-link { display:flex;min-width:0;flex:1;align-items:center;gap:10px;border:0;border-radius:11px;background:transparent;padding:3px;text-align:left; }
+  .mobile-menu-character-link img { width:42px;height:42px;flex:none;border:1.5px solid #ff2d7a;border-radius:50%;object-fit:cover; }
+  .mobile-menu-character-link span { display:grid;min-width:0;gap:3px; }
+  .mobile-menu-character-link small { color:#9c99a4;font-size:9px;letter-spacing:.08em; }
+  .mobile-menu-character-link b { overflow:hidden;color:#fff;font-size:13px;text-overflow:ellipsis;white-space:nowrap; }
+  .mobile-menu-switch { min-width:57px;min-height:38px;border:1px solid rgba(255,255,255,.13);border-radius:10px;background:rgba(255,255,255,.06);color:#f3f1f5;font-size:11px; }
+  .mobile-menu-character-list { display:grid;max-height:184px;overflow:auto;border-bottom:1px solid rgba(255,255,255,.1);padding:5px 0; }
+  .mobile-menu-character-list button { display:flex;min-height:46px;align-items:center;gap:10px;border:0;border-radius:9px;background:transparent;padding:4px 7px;color:#eae8ee;text-align:left;font-size:12px; }
+  .mobile-menu-character-list button[aria-current="true"] { background:rgba(255,45,122,.12); }
+  .mobile-menu-character-list img { width:33px;height:33px;border-radius:50%;object-fit:cover; }
+  .mobile-menu-check { margin-left:auto;color:#ff65a2; }
+  .mobile-app-menu nav { display:grid;gap:2px;padding-top:5px; }
+  .mobile-app-menu nav button { display:flex;min-height:45px;align-items:center;gap:12px;border:0;border-radius:10px;background:transparent;padding:0 9px;color:#f0eef3;text-align:left;font-size:13px; }
+  .mobile-app-menu nav button:hover,.mobile-menu-character-list button:hover { background:rgba(255,255,255,.07); }
+  .mobile-app-menu nav svg { width:19px;height:19px;color:#d5d2db; }
+  .mobile-app-menu nav span:nth-child(2) { flex:1; }
+  .mobile-menu-chevron { color:#777580;font-size:19px; }
+  .mobile-bottom-dock { position:fixed;right:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 9px);z-index:121;display:grid;width:min(368px,calc(100vw - 24px));height:62px;grid-template-columns:repeat(5,minmax(0,1fr));align-items:center;border:1px solid rgba(255,255,255,.15);border-radius:23px;background:rgba(8,8,12,.79);padding:3px 7px 2px;box-shadow:0 7px 25px rgba(0,0,0,.38);backdrop-filter:blur(20px) saturate(140%);-webkit-backdrop-filter:blur(20px) saturate(140%);transform:translateX(50%); }
+  .mobile-dock-item { display:grid;min-width:0;height:54px;justify-items:center;align-content:center;gap:1px;border:0;border-radius:14px;background:transparent;color:#c5c2cb;padding:0 1px; }
+  .mobile-dock-icon { display:grid;width:36px;height:34px;place-items:center; }
+  .mobile-dock-icon svg { width:22px;height:22px; }
+  .mobile-dock-item small { font-size:9px;line-height:1.1; }
+  .mobile-dock-item.is-active { color:#fff; }
+  .mobile-dock-item.is-active:not(.is-create) .mobile-dock-icon { color:#ff4d91; }
+  .mobile-dock-item.is-create { position:relative;z-index:1; }
+  .mobile-dock-item.is-create .mobile-dock-icon { width:52px;height:52px;margin-top:-14px;border:1px solid rgba(255,255,255,.23);border-radius:50%;background:#ff2d83;color:#fff;box-shadow:0 5px 16px rgba(255,45,131,.3); }
+  .mobile-dock-item.is-create .mobile-dock-icon svg { width:27px;height:27px;stroke-width:2; }
+  .mobile-dock-item.is-create small { margin-top:-1px; }
+  .mobile-dock-item:focus-visible,.mobile-top-bar button:focus-visible,.mobile-app-menu button:focus-visible { outline:2px solid #ff86b6;outline-offset:2px; }
+  .home-v2-mobile { min-height:100dvh;padding-top:calc(env(safe-area-inset-top,0px) + 64px);padding-bottom:calc(env(safe-area-inset-bottom,0px) + 106px); }
+  .home-v2-mobile-header,.home-v2-mobile-nav { display:none !important; }
+  .home-v2-mobile .home-v2-stories { gap:11px;border-bottom:0;padding:5px 14px 8px; }
+  .home-v2-mobile .home-v2-story { min-width:62px;gap:5px;font-size:11px; }
+  .home-v2-mobile .home-v2-story-ring { width:56px;height:56px; }
+  .home-v2-mobile .home-v2-feed { gap:9px; }
+  .home-v2-mobile .home-v2-post { border-bottom:1px solid rgba(255,255,255,.1); }
+  .home-v2-mobile .home-v2-post-header { min-height:51px;padding-right:12px;padding-left:12px; }
+  .home-v2-mobile .home-v2-media { aspect-ratio:4/3; }
+  .home-v2-mobile .home-v2-post-actions { min-height:51px; }
+  .home-v2-mobile .home-v2-caption { padding-bottom:13px; }
+  .app-header,.app-bottom-nav { display:none !important; }
+  .studio-shell { min-height:100dvh;padding-bottom:calc(env(safe-area-inset-bottom,0px) + 101px) !important; }
+  .studio-shell > section { border:0 !important; }
+  .studio-shell > section > .app-header { display:none !important; }
+  .studio-shell > section > .studio-page-content { padding-top:calc(env(safe-area-inset-top,0px) + 70px) !important;padding-bottom:calc(env(safe-area-inset-bottom,0px) + 105px) !important; }
+  .studio-shell.mobile-thread-active { min-height:100dvh;padding:0 !important; }
+  .studio-shell.mobile-thread-active > section > .studio-page-content { height:100dvh;padding:0 !important; }
+  .studio-shell.mobile-thread-active .studio-page-content > * { min-height:100dvh; }
+}
+
+@media (max-width: 370px) {
+  .mobile-top-bar { margin-right:9px;margin-left:9px;padding-right:4px;padding-left:9px; }
+  .mobile-top-actions { gap:0; }
+  .mobile-top-actions > button { width:37px;height:42px; }
+  .mobile-bottom-dock { width:calc(100vw - 20px); }
+  .mobile-dock-item small { font-size:8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-app-shell *, .mobile-app-shell *::before, .mobile-app-shell *::after { scroll-behavior:auto !important;transition:none !important;animation:none !important; }
+}

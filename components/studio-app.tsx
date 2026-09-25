@@ -19,6 +19,7 @@ import { PremiumLibrary } from "@/components/library-surface";
 import { PremiumMediaDetail } from "@/components/media-detail";
 import { GenerationProgress } from "@/components/generation-surfaces";
 import { UiIcon } from "@/components/ui-icon";
+import { MobileAppShell } from "@/components/mobile-shell/mobile-app-shell";
 
 type View =
   | "home"
@@ -78,6 +79,7 @@ export function StudioApp({
     initial.characters[0]?.id,
   );
   const [selected, setSelected] = useState<MediaAsset | null>(null);
+  const [mobileThreadActive, setMobileThreadActive] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState(route.split("/")[1] ?? "");
   const [jobConnectionError, setJobConnectionError] = useState(false);
   const [targetConversationId, setTargetConversationId] = useState("");
@@ -213,7 +215,7 @@ export function StudioApp({
     />;
   }
   return (
-    <main className={`studio-shell mx-auto min-h-screen max-w-[1680px] bg-[#08090d] pb-20 text-zinc-100 md:grid md:grid-cols-[220px_minmax(0,1fr)] ${view === "home" ? "is-home-view" : ""} ${isWideArchive ? "xl:grid-cols-[220px_minmax(0,1fr)]" : "xl:grid-cols-[220px_minmax(0,1fr)_300px]"} md:pb-0`}>
+    <main className={`studio-shell mx-auto min-h-screen max-w-[1680px] bg-[#08090d] pb-20 text-zinc-100 md:grid md:grid-cols-[220px_minmax(0,1fr)] ${view === "home" ? "is-home-view" : ""} ${isWideArchive ? "xl:grid-cols-[220px_minmax(0,1fr)]" : "xl:grid-cols-[220px_minmax(0,1fr)_300px]"} ${view === "messages" && mobileThreadActive ? "mobile-thread-active" : ""} md:pb-0`}>
       <aside className="app-desktop-nav hidden border-r border-white/8 bg-[#0c0d12] p-5 md:block">
         <button
           onClick={() => go("home")}
@@ -288,6 +290,7 @@ export function StudioApp({
               create={createFrom}
               refresh={refresh}
               initialConversationId={targetConversationId}
+              onMobileThreadChange={setMobileThreadActive}
             />
           )}{" "}
           {view === "library" && <PremiumLibrary data={data} select={setSelected} refresh={refresh} create={createFrom} />}{" "}
@@ -318,6 +321,7 @@ export function StudioApp({
         </div>
       </section>
       {!isWideArchive && <ContextRail data={data} character={active} view={view} go={go} openConversation={openConversation} />}
+      <MobileAppShell view={view} characters={data.characters} character={active} navigate={(destination) => go(destination as View)} setCharacter={setActiveCharacter} messageThread={view === "messages" && mobileThreadActive} overlayOpen={Boolean(selected)} />
       <nav aria-label="Main navigation" className="app-bottom-nav fixed bottom-0 left-0 right-0 z-30 flex justify-around border-t border-white/10 bg-[#111218]/95 px-2 py-2 backdrop-blur md:hidden">
         {nav.map(([id, label]) => (
           <button

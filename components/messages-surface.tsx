@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { AppSnapshot, MediaAsset, SceneProposal } from "@/lib/domain";
 
 type CreateScene = (
@@ -75,14 +75,16 @@ export function PremiumMessages({
   create,
   refresh,
   initialConversationId,
+  onMobileThreadChange,
 }: {
   data: AppSnapshot;
   create: CreateScene;
   refresh: () => Promise<void>;
   initialConversationId?: string;
+  onMobileThreadChange?: (active: boolean) => void;
 }) {
   const [activeId, setActiveId] = useState(initialConversationId || data.conversations[0]?.id);
-  const [mobileThread, setMobileThread] = useState(false);
+  const [mobileThread, setMobileThread] = useState(Boolean(initialConversationId));
   const [text, setText] = useState("");
   const [attachmentId, setAttachmentId] = useState("");
   const [details, setDetails] = useState(false);
@@ -145,6 +147,7 @@ export function PremiumMessages({
     setActiveId(id);
     setMobileThread(true);
   };
+  useEffect(() => onMobileThreadChange?.(mobileThread), [mobileThread, onMobileThreadChange]);
 
   return (
     <div className="mx-auto max-w-[1120px] overflow-hidden rounded-[28px] border border-white/[.07] bg-[#101217] shadow-2xl shadow-black/25 md:grid md:min-h-[700px] md:grid-cols-[310px_minmax(0,1fr)]">
