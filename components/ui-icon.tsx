@@ -1,4 +1,4 @@
-type IconName = "home" | "explore" | "create" | "reels" | "messages" | "library" | "profile" | "jobs" | "collections" | "heart" | "notes" | "more" | "reference" | "remix" | "notification";
+type IconName = "home" | "explore" | "create" | "reels" | "messages" | "library" | "profile" | "jobs" | "collections" | "heart" | "notes" | "more" | "reference" | "remix" | "notification" | "bookmark";
 
 export function UiIcon({ name, className }: { name: IconName; className?: string }) {
   const common = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
@@ -19,6 +19,7 @@ export function UiIcon({ name, className }: { name: IconName; className?: string
     case "reference": shape = <><path d="M12 4v16M4 12h16"/><path d="M5 5h5M14 19h5"/></>; break;
     case "remix": shape = <><path d="M4 7h9a4 4 0 0 1 4 4v1"/><path d="m14 9 3 3 3-3"/><path d="M20 17h-9a4 4 0 0 1-4-4v-1"/><path d="m10 15-3-3-3 3"/></>; break;
     case "notification": shape = <><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></>; break;
+    case "bookmark": shape = <path d="M6 4.5h12v16l-6-4-6 4z"/>; break;
   }
   return <svg aria-hidden="true" className={className} viewBox="0 0 24 24" {...common}>{shape}</svg>;
 }

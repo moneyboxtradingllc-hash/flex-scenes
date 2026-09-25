@@ -35,8 +35,9 @@ export function HomeFeedPost({ asset, character, onOpen, onFavorite, onReference
           <button className={`home-v2-icon-button home-v2-like ${asset.favorite ? "is-favorite" : ""}`} aria-label={asset.favorite ? "Remove favorite" : "Add favorite"} aria-pressed={asset.favorite} onClick={() => onFavorite(asset.id)}><UiIcon name="heart" /></button>
           <button className="home-v2-icon-button" aria-label="Open notes" onClick={() => onOpen(asset)}><UiIcon name="notes" /></button>
           <button className="home-v2-icon-button" aria-label={asset.type === "video" ? "Remix video" : "Remix image"} onClick={() => onRemix(asset)}><UiIcon name="remix" /></button>
+          <button className="home-v2-icon-button" aria-label="Use as reference" onClick={() => onReference(asset.id)}><UiIcon name="reference" /></button>
         </div>
-        <button className="home-v2-icon-button" aria-label="Use as reference" onClick={() => onReference(asset.id)}><UiIcon name="reference" /></button>
+        <button className="home-v2-icon-button" aria-label="Open collections and media details" onClick={() => onOpen(asset)}><UiIcon name="bookmark" /></button>
       </div>
       <div className="home-v2-caption"><b>{character?.name ?? "Scene"}</b>{caption && <span>{caption}</span>}</div>
     </article>
