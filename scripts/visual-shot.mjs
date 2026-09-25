@@ -12,10 +12,17 @@ const referenceCaptures = [
   { width: 1680, height: 1050, name: "home-v2-desktop-1680", liveName: "home-v2-live-1680" },
   { width: 393, height: 852, name: "home-v2-mobile-393" },
 ];
+const geometryCaptures = [
+  { width: 1440, height: 960, name: "home-geometry-1440" },
+  { width: 1680, height: 1050, name: "home-geometry-1680" },
+  { width: 2560, height: 1440, name: "home-v2-actual-ultrawide" },
+];
 const captures = process.argv.includes("--home-v2")
   ? referenceCaptures
-  : (process.argv.includes("--all") ? [360, 393, 430, 768, 1024, 1440, 1680] : [Number(process.argv[3] ?? 393)])
-    .map((width) => ({ width, height: width < 768 ? 852 : 960 }));
+  : process.argv.includes("--geometry")
+    ? geometryCaptures
+    : (process.argv.includes("--all") ? [360, 393, 430, 768, 1024, 1440, 1680] : [Number(process.argv[3] ?? 393)])
+      .map((width) => ({ width, height: width < 768 ? 852 : 960 }));
 const outputDir = path.join(root, ".artifacts", "visual");
 const portArg = process.argv.find((arg) => arg.startsWith("--port="));
 const port = Number(portArg?.split("=")[1] ?? 3210);
@@ -74,6 +81,7 @@ try {
   if (target === "/" && !process.argv.includes("--live")) {
     for (const file of await readdir(outputDir)) {
       if (/^home-(360|393|430|768|1024|1440|1680|live-393)\.png$/.test(file)) await rm(path.join(outputDir, file));
+      if (process.argv.includes("--geometry") && /^home-(geometry-1440|geometry-1680|v2-actual-ultrawide)\.png$/.test(file)) await rm(path.join(outputDir, file));
     }
   }
   browser = await chromium.launch({ headless: true });
@@ -111,9 +119,38 @@ try {
       const mobile = innerWidth < 768;
       const surface = mobile ? ".home-v2-mobile" : ".home-v2-desktop";
       const rightRail = document.querySelector(".home-v2-right-rail");
-      return { viewport: innerWidth, document: document.documentElement.scrollWidth, header: rect(mobile ? ".home-v2-mobile-header" : ".home-v2-top-actions"), storyRing: rect(surface + " .home-v2-story-ring"), media: rect(surface + " .home-v2-media"), create: rect(".home-v2-mobile-nav .is-create > span"), rightRail: rect(".home-v2-right-rail"), rightRailDisplay: rightRail ? getComputedStyle(rightRail).display : null, contextChildren: rightRail?.children.length ?? 0, homeMarker: !!document.querySelector('[data-ui-v2="home"]') };
+      const leftNav = rect(".home-v2-left-nav");
+      const center = rect(".home-v2-center");
+      const feed = rect(".home-v2-post");
+      const storyRail = rect(".home-v2-stories");
+      const right = rect(".home-v2-right-rail");
+      return {
+        viewport: innerWidth,
+        document: document.documentElement.scrollWidth,
+        header: rect(mobile ? ".home-v2-mobile-header" : ".home-v2-top-actions"),
+        storyRing: rect(surface + " .home-v2-story-ring"),
+        media: rect(surface + " .home-v2-media"),
+        create: rect(".home-v2-mobile-nav .is-create > span"),
+        leftNav,
+        centerGrid: center,
+        feedCard: feed,
+        feedRatio: feed ? Number((feed.width / innerWidth).toFixed(4)) : 0,
+        centerLeft: center?.left ?? null,
+        rightRail: right,
+        rightRailLeft: right?.left ?? null,
+        storyRail,
+        storyItems: document.querySelectorAll(surface + " .home-v2-story").length,
+        rightRailDisplay: rightRail ? getComputedStyle(rightRail).display : null,
+        contextChildren: rightRail?.children.length ?? 0,
+        homeMarker: !!document.querySelector('[data-ui-v2="home"]')
+      };
     });
     if (metrics.document > metrics.viewport + 1) throw new Error(`Horizontal overflow at ${width}px: ${metrics.document}px document / ${metrics.viewport}px viewport`);
+    if (target === "/" && process.argv.includes("--geometry") && width >= 1280) {
+      if (metrics.feedRatio < 0.5 || metrics.feedRatio > 0.54) throw new Error(`Desktop Home feed ratio is outside the 0.50–0.54 target at ${width}px: ${metrics.feedRatio}`);
+      if (Math.abs(metrics.storyRail.left - metrics.feedCard.left) > 1 || Math.abs(metrics.storyRail.width - metrics.feedCard.width) > 1) throw new Error(`Story rail and feed geometry do not align at ${width}px`);
+      if (Math.abs(metrics.rightRail.left - (metrics.feedCard.left + metrics.feedCard.width + 20)) > 2) throw new Error(`Right rail spacing is outside the 20px target at ${width}px`);
+    }
     if (target === "/" && width === 393 && (!metrics.media || metrics.media.width < 0.95 * metrics.viewport)) throw new Error(`Home media is not edge-to-edge enough: ${JSON.stringify(metrics.media)}`);
     const name = capture.name
       ? (process.argv.includes("--live") ? (capture.liveName ?? `${capture.name}-live`) : capture.name)
