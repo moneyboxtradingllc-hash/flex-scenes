@@ -17,8 +17,14 @@ const geometryCaptures = [
   { width: 1680, height: 1050, name: "home-geometry-1680" },
   { width: 2560, height: 1440, name: "home-v2-actual-ultrawide" },
 ];
+const mobileHomeCaptures = [
+  { width: 393, height: 852, name: "home-mobile-clean-393" },
+  { width: 390, height: 844, name: "home-mobile-clean-390" },
+];
 const captures = process.argv.includes("--home-v2")
   ? referenceCaptures
+  : process.argv.includes("--mobile-home")
+    ? mobileHomeCaptures
   : process.argv.includes("--geometry")
     ? geometryCaptures
     : (process.argv.includes("--all") ? [360, 393, 430, 768, 1024, 1440, 1680] : [Number(process.argv[3] ?? 393)])
@@ -31,6 +37,7 @@ const hostname = hostnameArg?.split("=")[1] ?? "127.0.0.1";
 const urlHostArg = process.argv.find((arg) => arg.startsWith("--url-host="));
 const urlHost = urlHostArg?.split("=")[1] ?? "127.0.0.1";
 const baseUrl = `http://${urlHost}:${port}`;
+const baseOrigin = new URL(baseUrl).origin;
 const expectedCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
 
 async function currentWorktreeId() {
@@ -101,6 +108,18 @@ try {
     await page.waitForTimeout(1300);
     if (errors.length) throw new Error(`Browser errors at ${width}px: ${errors.join(" | ")}`);
     await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+    const storyImages = await page.evaluate(async () => {
+      const images = Array.from(document.querySelectorAll(".home-v2-mobile .home-v2-stories img"));
+      await Promise.all(images.map((image) => image.decode().catch(() => undefined)));
+      return images.map((image) => ({ src: image.currentSrc, complete: image.complete, width: image.naturalWidth }));
+    });
+    const brokenStoryImages = storyImages.filter((image) => !image.complete || image.width === 0 || !image.src.startsWith(`${baseOrigin}/fixtures/story-avatar-`));
+    if (brokenStoryImages.length) throw new Error(`Broken or non-local mobile story avatars at ${width}px: ${JSON.stringify(brokenStoryImages)}`);
+    if (process.argv.includes("--mobile-home") && storyImages.length !== 7) throw new Error(`Expected seven loaded avatar portraits in the development story rail at ${width}px, got ${storyImages.length}`);
+    const storyLabels = await page.locator(".home-v2-mobile .home-v2-story > span:last-child").allTextContents();
+    if (storyLabels.some((label) => /demo|fixture|\bid\b/i.test(label))) throw new Error(`Development terminology leaked into story labels at ${width}px: ${storyLabels.join(", ")}`);
+    const clippedStoryLabels = await page.locator(".home-v2-mobile .home-v2-story > span:last-child").evaluateAll((nodes) => nodes.filter((node) => node.scrollWidth > node.clientWidth + 1).map((node) => node.textContent));
+    if (clippedStoryLabels.length) throw new Error(`Clipped mobile story labels at ${width}px: ${clippedStoryLabels.join(", ")}`);
     const brokenImages = await page.evaluate(() => Array.from(document.images).filter((img) => img.complete && img.naturalWidth === 0).map((img) => img.currentSrc || img.src));
     if (brokenImages.length) throw new Error(`Broken images at ${width}px: ${brokenImages.join(", ")}`);
     if (target === "/") {
@@ -152,6 +171,47 @@ try {
       if (Math.abs(metrics.rightRail.left - (metrics.feedCard.left + metrics.feedCard.width + 20)) > 2) throw new Error(`Right rail spacing is outside the 20px target at ${width}px`);
     }
     if (target === "/" && width === 393 && (!metrics.media || metrics.media.width < 0.95 * metrics.viewport)) throw new Error(`Home media is not edge-to-edge enough: ${JSON.stringify(metrics.media)}`);
+    if (target === "/" && width < 768) {
+      const mobileChecks = await page.evaluate(() => {
+        const rail = document.querySelector(".home-v2-mobile .home-v2-stories");
+        const nav = document.querySelector(".home-v2-mobile-nav");
+        const lastCaption = document.querySelector(".home-v2-mobile .home-v2-post:last-child .home-v2-caption");
+        const actionButtons = Array.from(document.querySelectorAll(".home-v2-mobile .home-v2-post:first-child .home-v2-post-actions button"));
+        const paddingBottom = Number.parseFloat(getComputedStyle(document.querySelector(".home-v2-mobile")).paddingBottom);
+        const navHeight = nav?.getBoundingClientRect().height ?? 0;
+        const navTop = nav?.getBoundingClientRect().top ?? innerHeight;
+        const viewportMeta = document.querySelector('meta[name="viewport"]')?.getAttribute("content") ?? "";
+        const primaryActionsReachable = actionButtons.length >= 4 && actionButtons.every((button) => {
+          const box = button.getBoundingClientRect();
+          return box.top >= 0 && box.bottom <= navTop;
+        });
+        window.scrollTo(0, document.documentElement.scrollHeight);
+        const navButtons = Array.from(nav?.querySelectorAll("button") ?? []).map((button) => {
+          const box = button.getBoundingClientRect();
+          return box.top >= 0 && box.bottom <= innerHeight;
+        });
+        return {
+          railScrollable: !!rail && rail.scrollWidth > rail.clientWidth && ["auto", "scroll"].includes(getComputedStyle(rail).overflowX),
+          navButtonsReachable: navButtons.length === 5 && navButtons.every(Boolean),
+          primaryActionsReachable,
+          contentClearance: paddingBottom >= navHeight + 16,
+          viewportFitCover: viewportMeta.includes("viewport-fit=cover"),
+          lastCaption: lastCaption ? (() => { const box = lastCaption.getBoundingClientRect(); return { bottom: Math.round(box.bottom), height: Math.round(box.height) }; })() : null,
+          navTop: nav ? Math.round(nav.getBoundingClientRect().top) : null,
+        };
+      });
+      await page.waitForTimeout(80);
+      const bottomCheck = await page.evaluate(() => {
+        const caption = document.querySelector(".home-v2-mobile .home-v2-post:last-child .home-v2-caption");
+        const nav = document.querySelector(".home-v2-mobile-nav");
+        return { captionBottom: caption ? caption.getBoundingClientRect().bottom : null, navTop: nav ? nav.getBoundingClientRect().top : null };
+      });
+      if (!mobileChecks.railScrollable || !mobileChecks.navButtonsReachable || !mobileChecks.primaryActionsReachable || !mobileChecks.contentClearance || !mobileChecks.viewportFitCover) throw new Error(`Mobile Home layout check failed at ${width}px: ${JSON.stringify(mobileChecks)}`);
+      if (bottomCheck.captionBottom !== null && bottomCheck.navTop !== null && bottomCheck.captionBottom > bottomCheck.navTop) throw new Error(`Bottom navigation obscures the final feed caption at ${width}px: ${JSON.stringify(bottomCheck)}`);
+      console.log(`Mobile Home checks passed at ${width}px ${JSON.stringify({ storyAvatarCount: storyImages.length, storyLabels, ...mobileChecks, bottomCheck })}`);
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.waitForTimeout(80);
+    }
     const name = capture.name
       ? (process.argv.includes("--live") ? (capture.liveName ?? `${capture.name}-live`) : capture.name)
       : (target === "/" ? `home${process.argv.includes("--live") ? "-live" : ""}-${width}` : `${target.replace(/^\/+|\/+$/g, "").replaceAll("/", "-") || "home"}-${width}`);

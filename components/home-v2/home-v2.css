@@ -1,7 +1,7 @@
 .home-v2 { min-height: 100dvh; background: #050506; color: #f8f7fa; }
 .home-v2 button { color: inherit; }
 .home-v2-desktop { display: none; }
-.home-v2-mobile { min-height: 100dvh; padding-bottom: calc(76px + env(safe-area-inset-bottom)); background: #050506; }
+.home-v2-mobile { min-height: 100dvh; padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); background: #050506; }
 .home-v2-mobile-header { display: flex; height: 98px; align-items: center; justify-content: space-between; padding: 17px 22px 8px; }
 .home-v2-brand { display: grid; width: max-content; gap: 0; border: 0; background: transparent; padding: 0; font-size: 31px; font-style: italic; font-weight: 1000; letter-spacing: -.085em; line-height: .79; text-align: left; transform: skew(-9deg); }
 .home-v2-brand span:last-child { letter-spacing: -.075em; }
@@ -41,7 +41,7 @@
 .home-v2-caption { display: flex; align-items: baseline; gap: 12px; padding: 0 22px 15px; font-size: 17px; line-height: 1.45; }
 .home-v2-caption b { flex: none; color: #f7f5f8; font-size: 18px; font-weight: 700; }
 .home-v2-caption span { color: #dedce2; }
-.home-v2-mobile-nav { position: fixed; z-index: 40; right: 0; bottom: 0; left: 0; display: grid; height: calc(72px + env(safe-area-inset-bottom)); grid-template-columns: repeat(5,1fr); align-items: center; border-top: 1px solid rgba(255,255,255,.14); background: rgba(5,5,6,.98); padding: 4px 10px max(4px,env(safe-area-inset-bottom)); }
+.home-v2-mobile-nav { position: fixed; z-index: 40; right: 0; bottom: 0; left: 0; display: grid; height: calc(72px + env(safe-area-inset-bottom, 0px)); grid-template-columns: repeat(5,1fr); align-items: center; border-top: 1px solid rgba(255,255,255,.14); background: rgba(5,5,6,.98); padding: 4px 10px max(4px,env(safe-area-inset-bottom, 0px)); }
 .home-v2-mobile-nav button { display: grid; min-width: 0; justify-items: center; gap: 3px; border: 0; background: transparent; color: #e8e6eb; padding: 1px; }
 .home-v2-mobile-nav button > span { display: grid; width: 35px; height: 35px; place-items: center; }
 .home-v2-mobile-nav svg { width: 25px; height: 25px; }

@@ -7,13 +7,14 @@ const storyPortraits = [
   "/fixtures/story-avatar-1.svg",
   "/fixtures/story-avatar-2.svg",
   "/fixtures/story-avatar-3.svg",
-  "/fixtures/story-avatar-4.svg",
-  "/fixtures/story-avatar-5.svg",
-  "/fixtures/story-avatar-6.svg",
-  "/fixtures/story-avatar-7.svg",
 ];
 
-const demoStories = ["Demo · Aria", "Demo · Luna", "Demo · Chloe", "Demo · Mia"];
+const developmentStories = [
+  { name: "Aria", portrait: "/fixtures/story-avatar-4.svg" },
+  { name: "Luna", portrait: "/fixtures/story-avatar-5.svg" },
+  { name: "Chloe", portrait: "/fixtures/story-avatar-6.svg" },
+  { name: "Mia", portrait: "/fixtures/story-avatar-7.svg" },
+];
 
 export function HomeStoryRail({ characters, onCreate, onCharacter }: {
   characters: AppSnapshot["characters"];
@@ -27,12 +28,12 @@ export function HomeStoryRail({ characters, onCreate, onCharacter }: {
       </button>
       {characters.map((character, index) => (
         <button className="home-v2-story" key={character.id} onClick={() => onCharacter(character.id)} aria-label={`Open ${character.name}`}>
-          <span className="home-v2-story-ring"><img src={storyPortraits[index % 3]} alt="" loading="lazy" /></span><span>{character.name.split(" ")[0]}</span>
+          <span className="home-v2-story-ring"><img src={storyPortraits[index % storyPortraits.length]} alt="" loading="eager" /></span><span>{character.name.split(" ")[0]}</span>
         </button>
       ))}
-      {process.env.NODE_ENV === "development" && demoStories.map((label, index) => (
-        <div className="home-v2-story is-demo" key={label} aria-label={`${label}, development-only layout fixture`}>
-          <span className="home-v2-story-ring"><img src={storyPortraits[index + 3]} alt="" loading="lazy" /></span><span>{label}</span>
+      {process.env.NODE_ENV === "development" && developmentStories.map((story) => (
+        <div className="home-v2-story is-demo" key={story.name}>
+          <span className="home-v2-story-ring"><img src={story.portrait} alt="" loading="eager" /></span><span>{story.name}</span>
         </div>
       ))}
     </section>
