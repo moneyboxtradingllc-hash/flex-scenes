@@ -88,10 +88,12 @@ input::placeholder,textarea::placeholder { color:rgba(228,226,234,.42); }
   .reels-mobile-bottom-gradient{bottom:0;height:43%;background:linear-gradient(0deg,rgba(0,0,0,.83),rgba(0,0,0,.18) 70%,transparent)}
   .reels-mobile-top-overlay{position:fixed;top:calc(env(safe-area-inset-top,0px) + 12px);right:14px;left:16px;z-index:110;display:flex;align-items:center;justify-content:space-between;color:#fff;pointer-events:none}
   .reels-mobile-top-overlay>span{font-size:14px;font-weight:850;letter-spacing:.13em;text-shadow:0 1px 10px #000}
+  .reels-local-qa-label{margin-left:7px;border:1px solid #ffffff35;border-radius:999px;background:#0008;padding:3px 6px;color:#ffd2e4;font-size:8px;font-weight:700;letter-spacing:.08em;vertical-align:2px}
   .reels-mobile-top-overlay>button{position:relative;display:grid;width:46px;height:46px;place-items:center;border:1px solid rgba(255,255,255,.22);border-radius:50%;background:rgba(8,8,12,.42);color:#fff;backdrop-filter:blur(12px);pointer-events:auto}
   .reels-mobile-top-overlay>button i{position:absolute;top:8px;right:8px;width:7px;height:7px;border-radius:50%;background:#ff2d7a;opacity:0}
   .reels-mobile-top-overlay>button i[data-active-filter="true"]{opacity:1}
   .reels-mobile-preview-badge{position:absolute;top:calc(env(safe-area-inset-top,0px) + 70px);right:14px;z-index:4;border:1px solid rgba(255,255,255,.2);border-radius:99px;background:rgba(0,0,0,.36);padding:5px 9px;color:#fff;font-size:10px;backdrop-filter:blur(10px)}
+  .reels-mobile-qa-badge{top:calc(env(safe-area-inset-top,0px) + 98px);border-color:#ff2d7a66;color:#ffd0e2}
   .reels-mobile-identity{position:absolute;right:82px;bottom:calc(env(safe-area-inset-bottom,0px) + 91px);left:16px;z-index:5;max-width:calc(100% - 100px);color:#fff;text-shadow:0 1px 8px rgba(0,0,0,.6)}
   .reels-mobile-character{display:inline-flex;min-height:44px;align-items:center;gap:9px;border:0;background:transparent;padding:0;color:#fff;text-align:left;font-size:14px;font-weight:700}
   .reels-mobile-character img{width:38px;height:38px;border:1.5px solid rgba(255,255,255,.8);border-radius:50%;object-fit:cover;background:#17151c}

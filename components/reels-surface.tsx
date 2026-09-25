@@ -1,12 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { RefObject } from "react";
 import type { AppSnapshot, MediaAsset } from "@/lib/domain";
 
 type Filter = "all" | "favorites" | "recent" | "character";
 const filterLabels: Record<Filter, string> = { all: "All Videos", favorites: "Favorites", recent: "Recent", character: "Character" };
 const isPlayable = (asset: MediaAsset) => /\.(mp4|webm|ogv)(?:[?#].*)?$/i.test(asset.url);
+const subscribeToQaPlayback = () => () => {};
+const getQaPlaybackSnapshot = () => process.env.NODE_ENV === "development" && window.matchMedia("(max-width: 767px)").matches && new URLSearchParams(window.location.search).get("qaPlayback") === "1";
 
 function Icon({ name, className = "" }: { name: string; className?: string }) {
   const paths: Record<string, string> = {
@@ -56,16 +58,38 @@ export function PremiumReels({
   const [favoriteOverrides, setFavoriteOverrides] = useState<Record<string, boolean>>({});
   const [referenceOverrides, setReferenceOverrides] = useState<Record<string, boolean>>({});
   const [isMobileViewport, setIsMobileViewport] = useState(false);
+  const qaPlaybackEnabled = useSyncExternalStore(subscribeToQaPlayback, getQaPlaybackSnapshot, () => false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const mobileFeedRef = useRef<HTMLDivElement>(null);
   const activeSlideRef = useRef(0);
   const touchY = useRef<number | null>(null);
+  const qaReelAssets = useMemo<MediaAsset[]>(() => {
+    const characterId = data.characters[0]?.id;
+    if (!qaPlaybackEnabled || !characterId) return [];
+    return [1, 2].map((take) => ({
+      id: `dev-qa-reel-${take}`,
+      characterId,
+      type: "video",
+      url: `/api/qa/reel-playback-fixture.mp4?take=${take}`,
+      posterUrl: null,
+      title: `Local QA Reel ${take}`,
+      caption: "Development-only playback fixture",
+      prompt: "",
+      providerId: "development-qa",
+      settingsJson: "{}",
+      parentId: null,
+      isReference: false,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      favorite: false,
+    }));
+  }, [data.characters, qaPlaybackEnabled]);
+  const reelMedia = useMemo(() => qaPlaybackEnabled ? qaReelAssets : data.media, [data.media, qaPlaybackEnabled, qaReelAssets]);
   const videos = useMemo(() => {
-    const filtered = data.media.filter((asset) => asset.type === "video" &&
+    const filtered = reelMedia.filter((asset) => asset.type === "video" &&
       (filter !== "favorites" || asset.favorite) &&
       (filter !== "character" || !characterId || asset.characterId === characterId));
     return filter === "recent" ? filtered.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt)) : filtered;
-  }, [data.media, filter, characterId]);
+  }, [reelMedia, filter, characterId]);
   const safeIndex = Math.min(index, Math.max(videos.length - 1, 0));
   const item = videos[safeIndex];
   const character = data.characters.find((entry) => entry.id === item?.characterId);
@@ -259,6 +283,7 @@ export function PremiumReels({
             character={assetCharacter}
             parent={assetParent}
             videoRef={active ? videoRef : undefined}
+            qaFixture={asset.id.startsWith("dev-qa-reel-")}
             onPlay={() => { if (activeSlideRef.current === slideIndex) setPlaying(true); }}
             onPause={() => { if (activeSlideRef.current === slideIndex) setPlaying(false); }}
             onLoaded={() => { if (activeSlideRef.current === slideIndex) { setLoaded(true); setPlaying(true); } }}
@@ -279,7 +304,7 @@ export function PremiumReels({
       </div>
 
       <div className="reels-mobile-top-overlay">
-        <span>REELS</span>
+        <span>REELS{qaPlaybackEnabled && <small className="reels-local-qa-label">LOCAL QA</small>}</span>
         <button aria-label={`Filter reels, current filter ${filterLabels[filter]}`} onClick={() => setFilterSheetOpen(true)}>
           <Icon name="filter" className="h-5 w-5" />
           <i data-active-filter={filter !== "all" || undefined} />
@@ -383,7 +408,7 @@ export function PremiumReels({
   );
 }
 
-function MobileReelSlide({ asset, index, active, playable, playing, loaded, ended, progress, character, parent, videoRef, onPlay, onPause, onLoaded, onEnded, onProgress, onSeek, onToggle, onFavorite, onNotes, onRemix, onReference, onMore, onOpenCharacter, captionExpanded, toggleCaption }: {
+function MobileReelSlide({ asset, index, active, playable, playing, loaded, ended, progress, character, parent, videoRef, onPlay, onPause, onLoaded, onEnded, onProgress, onSeek, onToggle, onFavorite, onNotes, onRemix, onReference, onMore, onOpenCharacter, captionExpanded, toggleCaption, qaFixture }: {
   asset: MediaAsset;
   index: number;
   active: boolean;
@@ -410,6 +435,7 @@ function MobileReelSlide({ asset, index, active, playable, playing, loaded, ende
   onOpenCharacter: () => void;
   captionExpanded: boolean;
   toggleCaption: () => void;
+  qaFixture: boolean;
 }) {
   const [landscape, setLandscape] = useState(false);
   const poster = asset.posterUrl || (!playable ? asset.url : undefined);
@@ -427,6 +453,7 @@ function MobileReelSlide({ asset, index, active, playable, playing, loaded, ende
 
       <div className="reels-mobile-top-gradient" />
       <div className="reels-mobile-bottom-gradient" />
+      {qaFixture && <span className="reels-mobile-preview-badge reels-mobile-qa-badge">Local QA</span>}
       {!playable && <span className="reels-mobile-preview-badge">Preview</span>}
 
       <div className="reels-mobile-identity">
@@ -441,16 +468,16 @@ function MobileReelSlide({ asset, index, active, playable, playing, loaded, ende
       </div>
 
       <div className="reels-mobile-rail" aria-label="Reel actions">
-        <ActionButton label={asset.favorite ? "Remove favorite" : "Favorite"} visibleLabel={asset.favorite ? "Saved" : "Favorite"} icon="heart" active={asset.favorite} onClick={onFavorite} showLabel />
-        <ActionButton label="Notes" icon="note" onClick={onNotes} showLabel />
-        <ActionButton label={playable ? "Remix" : "Create"} icon="remix" primary onClick={onRemix} showLabel />
-        <ActionButton label={asset.isReference ? "Remove reference" : "Use as reference"} visibleLabel={asset.isReference ? "Ref ✓" : "Ref"} icon="reference" active={asset.isReference} onClick={onReference} showLabel />
-        <ActionButton label="More" icon="more" onClick={onMore} showLabel />
+        <ActionButton label={asset.favorite ? "Remove favorite" : "Favorite"} visibleLabel={asset.favorite ? "Saved" : "Favorite"} icon="heart" active={asset.favorite} onClick={onFavorite} showLabel disabled={qaFixture} />
+        <ActionButton label="Notes" icon="note" onClick={onNotes} showLabel disabled={qaFixture} />
+        <ActionButton label={playable ? "Remix" : "Create"} icon="remix" primary onClick={onRemix} showLabel disabled={qaFixture} />
+        <ActionButton label={asset.isReference ? "Remove reference" : "Use as reference"} visibleLabel={asset.isReference ? "Ref ✓" : "Ref"} icon="reference" active={asset.isReference} onClick={onReference} showLabel disabled={qaFixture} />
+        <ActionButton label="More" icon="more" onClick={onMore} showLabel disabled={qaFixture} />
       </div>
     </div>
   </article>;
 }
 
-function ActionButton({ label, visibleLabel, icon, onClick, active = false, primary = false, horizontal = false, showLabel = false }: { label: string; visibleLabel?: string; icon: string; onClick: () => void; active?: boolean; primary?: boolean; horizontal?: boolean; showLabel?: boolean }) {
-  return <button onClick={onClick} aria-label={label} aria-pressed={active} title={label} className={`reels-action ${horizontal ? "reels-action-horizontal" : ""} ${primary ? "bg-fuchsia-500 text-white" : active ? "text-fuchsia-300" : "text-white"}`}><Icon name={icon} className="h-5 w-5" />{(horizontal || showLabel) && <span className="text-xs">{visibleLabel ?? label}</span>}</button>;
+function ActionButton({ label, visibleLabel, icon, onClick, active = false, primary = false, horizontal = false, showLabel = false, disabled = false }: { label: string; visibleLabel?: string; icon: string; onClick: () => void; active?: boolean; primary?: boolean; horizontal?: boolean; showLabel?: boolean; disabled?: boolean }) {
+  return <button onClick={onClick} aria-label={label} aria-pressed={active} title={label} disabled={disabled} className={`reels-action ${horizontal ? "reels-action-horizontal" : ""} ${primary ? "bg-fuchsia-500 text-white" : active ? "text-fuchsia-300" : "text-white"} ${disabled ? "cursor-not-allowed opacity-45" : ""}`}><Icon name={icon} className="h-5 w-5" />{(horizontal || showLabel) && <span className="text-xs">{visibleLabel ?? label}</span>}</button>;
 }

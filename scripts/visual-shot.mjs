@@ -42,6 +42,7 @@ const reelsV3Captures = [
   { width: 393, height: 852, name: "mobile-v3-reels-393" },
   { width: 430, height: 932, name: "mobile-v3-reels-430" },
 ];
+const reelsPlaybackQACaptures = [{ width: 393, height: 852, name: "mobile-v3-reels-playing-393" }];
 const captures = process.argv.includes("--home-v2")
   ? referenceCaptures
   : process.argv.includes("--desktop-v3")
@@ -52,6 +53,8 @@ const captures = process.argv.includes("--home-v2")
     ? exploreV3Captures
   : process.argv.includes("--reels-v3")
     ? reelsV3Captures
+  : process.argv.includes("--reels-playback-qa")
+    ? reelsPlaybackQACaptures
   : process.argv.includes("--mobile-v3")
     ? mobileV3Captures
   : process.argv.includes("--mobile-home")
@@ -134,7 +137,16 @@ try {
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
-    await page.goto(new URL(target, baseUrl).toString(), { waitUntil: "domcontentloaded" });
+    if (process.argv.includes("--reels-playback-qa") && target === "/reels") {
+      await page.route("**/api/qa/reel-playback-fixture.mp4**", async (route) => {
+        if (route.request().headers().range === "bytes=0-31") return route.continue();
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        return route.continue();
+      });
+    }
+    const pageUrl = new URL(target, baseUrl);
+    if (process.argv.includes("--reels-playback-qa") && target === "/reels") pageUrl.searchParams.set("qaPlayback", "1");
+    await page.goto(pageUrl.toString(), { waitUntil: "domcontentloaded" });
     await page.evaluate(() => document.fonts.ready);
     await page.waitForTimeout(1300);
     if (errors.length) throw new Error(`Browser errors at ${width}px: ${errors.join(" | ")}`);
@@ -425,6 +437,108 @@ try {
       if (await topBar.evaluate((node) => { const rect = node.getBoundingClientRect(); return rect.top < 0 || rect.bottom > innerHeight; })) throw new Error("Explore top bar did not return at document top");
       console.log(`Mobile Explore interactions passed ${JSON.stringify({ columns, filterScroll, afterMedia })}`);
     }
+    if (process.argv.includes("--reels-playback-qa") && target === "/reels" && width === 393) {
+      const feed = page.locator("[data-reels-mobile-feed]");
+      const activeSlide = page.locator('[data-reel-slide][data-active="true"]');
+      const dock = page.getByRole("navigation", { name: "Main navigation" });
+      const fixtureResponse = await page.evaluate(async () => {
+        const response = await fetch("/api/qa/reel-playback-fixture.mp4", { headers: { Range: "bytes=0-31" } });
+        return { status: response.status, type: response.headers.get("content-type"), range: response.headers.get("content-range"), bytes: (await response.arrayBuffer()).byteLength };
+      });
+      if (fixtureResponse.status !== 206 || fixtureResponse.type !== "video/mp4" || fixtureResponse.bytes !== 32 || !fixtureResponse.range?.startsWith("bytes 0-31/")) throw new Error(`Development fixture route did not support MP4 byte ranges: ${JSON.stringify(fixtureResponse)}`);
+      if (!(await page.getByText("LOCAL QA", { exact: true }).isVisible())) throw new Error("Development playback fixture is not labeled Local QA");
+      const initial = await page.evaluate(() => ({
+        slideCount: document.querySelectorAll("[data-reel-slide]").length,
+        mountedVideos: document.querySelectorAll("[data-reel-slide] video").length,
+        viewport: { width: innerWidth, height: innerHeight },
+        slide: document.querySelector('[data-reel-slide][data-active="true"]')?.getBoundingClientRect().toJSON(),
+      }));
+      if (initial.slideCount !== 2 || initial.mountedVideos !== 1 || initial.slide?.height !== height) throw new Error(`QA mode should provide two viewport-height Reels with one mounted video: ${JSON.stringify(initial)}`);
+      const beforeMetadataBox = await activeSlide.evaluate((node) => { const { x, y, width, height } = node.getBoundingClientRect(); return { x, y, width, height }; });
+      await page.waitForFunction(() => {
+        const video = document.querySelector('[data-reel-slide][data-active="true"] video');
+        return video && video.readyState >= 2 && !video.paused;
+      }, { timeout: 10000 });
+      const firstVideo = page.locator('[data-reel-slide][data-active="true"] video');
+      const firstMetrics = await firstVideo.evaluate((video) => ({ duration: video.duration, width: video.videoWidth, height: video.videoHeight, muted: video.muted, paused: video.paused, readyState: video.readyState }));
+      if (Math.abs(firstMetrics.duration - 5) > 0.05 || firstMetrics.width !== 360 || firstMetrics.height !== 640 || !firstMetrics.muted || firstMetrics.paused) throw new Error(`First QA Reel did not autoplay as a silent 5-second portrait clip: ${JSON.stringify(firstMetrics)}`);
+      await firstVideo.evaluate((video) => { window.__qaFirstVideo = video; });
+      await page.waitForFunction(() => document.querySelector('[data-reel-slide][data-active="true"] video')?.readyState >= 1);
+      const afterMetadataBox = await activeSlide.evaluate((node) => { const { x, y, width, height } = node.getBoundingClientRect(); return { x, y, width, height }; });
+      if (JSON.stringify(beforeMetadataBox) !== JSON.stringify(afterMetadataBox)) throw new Error(`Video metadata caused a Reel layout shift: ${JSON.stringify({ beforeMetadataBox, afterMetadataBox })}`);
+      const firstOverlay = await page.evaluate(() => ({
+        dockTop: document.querySelector(".mobile-bottom-dock")?.getBoundingClientRect().top ?? null,
+        railBottom: document.querySelector('[data-reel-slide][data-active="true"] .reels-mobile-rail')?.getBoundingClientRect().bottom ?? null,
+        allVideos: document.querySelectorAll("[data-reel-slide] video").length,
+      }));
+      if (firstOverlay.dockTop === null || firstOverlay.railBottom === null || firstOverlay.railBottom > firstOverlay.dockTop || firstOverlay.allVideos !== 1) throw new Error(`The action rail overlaps the dock or multiple video elements are mounted: ${JSON.stringify(firstOverlay)}`);
+      await page.screenshot({ path: path.join(outputDir, "mobile-v3-reels-playing-393.png"), animations: "disabled" });
+
+      await page.mouse.move(192, 690);
+      await page.mouse.wheel(0, 740);
+      await page.waitForFunction(() => document.querySelector('[data-reel-slide][data-active="true"]')?.getAttribute("data-reel-index") === "1", { timeout: 5000 });
+      await page.waitForFunction(() => {
+        const feed = document.querySelector("[data-reels-mobile-feed]");
+        const slide = document.querySelector('[data-reel-slide][data-active="true"]');
+        return feed && slide && Math.abs(feed.scrollTop - slide.offsetTop) <= 3 && Math.abs(slide.getBoundingClientRect().top) <= 3;
+      }, { timeout: 5000 });
+      await page.waitForFunction(() => {
+        const video = document.querySelector('[data-reel-slide][data-active="true"] video');
+        return video && video.readyState >= 2 && !video.paused;
+      }, { timeout: 10000 });
+      const secondMetrics = await page.evaluate(() => ({
+        active: document.querySelector('[data-reel-slide][data-active="true"]')?.getAttribute("data-reel-index"),
+        videoCount: document.querySelectorAll("[data-reel-slide] video").length,
+        paused: document.querySelector('[data-reel-slide][data-active="true"] video')?.paused,
+        scrollTop: Math.round(document.querySelector("[data-reels-mobile-feed]").scrollTop),
+        snapTarget: Math.round(document.querySelector('[data-reel-slide][data-active="true"]').offsetTop),
+        slideTop: Math.round(document.querySelector('[data-reel-slide][data-active="true"]').getBoundingClientRect().top),
+        previousPaused: window.__qaFirstVideo?.paused,
+      }));
+      if (secondMetrics.active !== "1" || secondMetrics.videoCount !== 1 || secondMetrics.paused || !secondMetrics.previousPaused || Math.abs(secondMetrics.scrollTop - secondMetrics.snapTarget) > 3 || Math.abs(secondMetrics.slideTop) > 3) throw new Error(`Second Reel did not snap to its viewport start and play exclusively, or Reel 1 failed to pause: ${JSON.stringify(secondMetrics)}`);
+      await page.screenshot({ path: path.join(outputDir, "mobile-v3-reels-second-playing-393.png"), animations: "disabled" });
+      await page.locator('[data-reel-slide][data-active="true"] video').evaluate((video) => { window.__qaSecondVideo = video; });
+
+      await page.mouse.wheel(0, -740);
+      await page.waitForFunction(() => document.querySelector('[data-reel-slide][data-active="true"]')?.getAttribute("data-reel-index") === "0", { timeout: 5000 });
+      await page.waitForFunction(() => {
+        const video = document.querySelector('[data-reel-slide][data-active="true"] video');
+        return video && video.readyState >= 2 && !video.paused;
+      }, { timeout: 10000 });
+      const resumed = await page.evaluate(() => ({ videoCount: document.querySelectorAll("[data-reel-slide] video").length, playing: !document.querySelector('[data-reel-slide][data-active="true"] video')?.paused, previousPaused: window.__qaSecondVideo?.paused }));
+      if (resumed.videoCount !== 1 || !resumed.playing || !resumed.previousPaused) throw new Error(`Reel 1 did not resume exclusively after Reel 2 paused: ${JSON.stringify(resumed)}`);
+
+      const currentVideo = page.locator('[data-reel-slide][data-active="true"] video');
+      await currentVideo.click({ position: { x: 180, y: 350 } });
+      await page.waitForFunction(() => document.querySelector('[data-reel-slide][data-active="true"] video')?.paused === true);
+      await page.screenshot({ path: path.join(outputDir, "mobile-v3-reels-paused-realvideo-393.png"), animations: "disabled" });
+      await page.getByRole("button", { name: "Play reel" }).click();
+      await page.waitForFunction(() => {
+        const video = document.querySelector('[data-reel-slide][data-active="true"] video');
+        return video && !video.paused;
+      });
+
+      const seek = page.getByRole("slider", { name: "Seek video" });
+      await seek.evaluate((input) => { input.value = "0.55"; input.dispatchEvent(new Event("input", { bubbles: true })); input.dispatchEvent(new Event("change", { bubbles: true })); });
+      await page.waitForFunction(() => {
+        const video = document.querySelector('[data-reel-slide][data-active="true"] video');
+        return video && video.currentTime / video.duration > 0.5 && video.currentTime / video.duration < 0.7;
+      }, { timeout: 3000 });
+      const seekPosition = await currentVideo.evaluate((video) => video.currentTime / video.duration);
+
+      await currentVideo.evaluate((video) => { video.currentTime = video.duration - 0.06; });
+      await page.waitForFunction(() => !!document.querySelector('[data-reel-slide][data-active="true"] button[aria-label="Replay reel"]'), { timeout: 3000 });
+      const ended = await currentVideo.evaluate((video) => ({ ended: video.ended, paused: video.paused, currentTime: video.currentTime, duration: video.duration }));
+      if (!ended.ended || !ended.paused) throw new Error(`QA Reel did not reach its ended state: ${JSON.stringify(ended)}`);
+      await page.screenshot({ path: path.join(outputDir, "mobile-v3-reels-ended-393.png"), animations: "disabled" });
+      await page.getByRole("button", { name: "Replay reel" }).click();
+      await page.waitForFunction(() => {
+        const video = document.querySelector('[data-reel-slide][data-active="true"] video');
+        return video && !video.paused && video.currentTime < 0.4;
+      });
+      console.log(`Real local video playback passed ${JSON.stringify({ fixture: firstMetrics, second: secondMetrics, resumed, seekPosition, ended, range: fixtureResponse, overlay: firstOverlay })}`);
+    }
+
     if (process.argv.includes("--reels-v3") && target === "/reels" && width === 393) {
       const feed = page.locator("[data-reels-mobile-feed]");
       const dock = page.getByRole("navigation", { name: "Main navigation" });
