@@ -21,8 +21,15 @@ const mobileHomeCaptures = [
   { width: 393, height: 852, name: "home-mobile-clean-393" },
   { width: 390, height: 844, name: "home-mobile-clean-390" },
 ];
+const desktopV3Captures = [
+  { width: 1440, height: 960, name: "home-desktop-v3-1440" },
+  { width: 1680, height: 1050, name: "home-desktop-v3-1680" },
+  { width: 2560, height: 1440, name: "home-desktop-v3-2560" },
+];
 const captures = process.argv.includes("--home-v2")
   ? referenceCaptures
+  : process.argv.includes("--desktop-v3")
+    ? desktopV3Captures
   : process.argv.includes("--mobile-home")
     ? mobileHomeCaptures
   : process.argv.includes("--geometry")
@@ -125,7 +132,8 @@ try {
     if (target === "/") {
       if (await page.locator('[data-home-architecture="dedicated"]').count() !== 1) throw new Error("Dedicated Home V2 architecture missing from rendered route");
       if (width < 768 && await page.getByRole("navigation", { name: "Main navigation" }).locator("button").count() !== 5) throw new Error("Mobile navigation must contain five actions");
-      if (width >= 768 && (!(await page.locator(".home-v2-left-nav").isVisible()) || !(await page.locator(".home-v2-right-rail").isVisible()))) throw new Error("Dedicated desktop Home rails did not render");
+      if (width >= 768 && process.argv.includes("--desktop-v3") && (!(await page.locator(".home-v2-left-nav").isVisible()) || !(await page.locator(".home-v2-workspace-toolbar").isVisible()) || !(await page.locator(".home-v2-feature-card").isVisible()) || await page.locator(".home-v2-right-rail").isVisible())) throw new Error("Desktop V3 shell or media/context split did not render");
+      if (width >= 768 && !process.argv.includes("--desktop-v3") && (!(await page.locator(".home-v2-left-nav").isVisible()) || !(await page.locator(".home-v2-right-rail").isVisible()))) throw new Error("Dedicated desktop Home rails did not render");
       if (await page.locator(".home-v2-right-rail .home-v2-character-card").count() > 1) throw new Error("Unexpected duplicate Home character card");
     }
     const metrics = await page.evaluate(() => {
@@ -140,7 +148,7 @@ try {
       const rightRail = document.querySelector(".home-v2-right-rail");
       const leftNav = rect(".home-v2-left-nav");
       const center = rect(".home-v2-center");
-      const feed = rect(".home-v2-post");
+      const feed = rect(mobile ? ".home-v2-post" : (document.querySelector(".home-v2-feature-card") ? ".home-v2-feature-card" : ".home-v2-post"));
       const storyRail = rect(".home-v2-stories");
       const right = rect(".home-v2-right-rail");
       return {
@@ -161,10 +169,17 @@ try {
         storyItems: document.querySelectorAll(surface + " .home-v2-story").length,
         rightRailDisplay: rightRail ? getComputedStyle(rightRail).display : null,
         contextChildren: rightRail?.children.length ?? 0,
+        workspace: rect(".home-v2-workspace-inner"),
+        mediaColumn: rect(".home-v2-feature-media-column"),
+        contextColumn: rect(".home-v2-feature-context"),
         homeMarker: !!document.querySelector('[data-ui-v2="home"]')
       };
     });
     if (metrics.document > metrics.viewport + 1) throw new Error(`Horizontal overflow at ${width}px: ${metrics.document}px document / ${metrics.viewport}px viewport`);
+    if (target === "/" && process.argv.includes("--desktop-v3") && width >= 1280) {
+      if (!metrics.workspace || metrics.workspace.width > 1252) throw new Error(`Desktop workspace exceeds its intended 1250px max width at ${width}px: ${JSON.stringify(metrics.workspace)}`);
+      if (metrics.feedCard.width < 700 || !metrics.mediaColumn || !metrics.contextColumn) throw new Error(`Desktop media/context split is too small or missing at ${width}px: ${JSON.stringify(metrics)}`);
+    }
     if (target === "/" && process.argv.includes("--geometry") && width >= 1280) {
       if (metrics.feedRatio < 0.5 || metrics.feedRatio > 0.54) throw new Error(`Desktop Home feed ratio is outside the 0.50–0.54 target at ${width}px: ${metrics.feedRatio}`);
       if (Math.abs(metrics.storyRail.left - metrics.feedCard.left) > 1 || Math.abs(metrics.storyRail.width - metrics.feedCard.width) > 1) throw new Error(`Story rail and feed geometry do not align at ${width}px`);
@@ -227,16 +242,15 @@ try {
       console.log("Home media to Create Studio handoff passed");
     }
     if (process.argv.includes("--smoke") && target === "/" && width >= 1280) {
-      const messageAction = page.locator(".home-v2-message-cta");
-      const characterName = await messageAction.innerText();
+      const messageAction = page.getByRole("button", { name: "Open Messages" });
       await messageAction.click();
       await page.waitForTimeout(150);
-      if (new URL(page.url()).pathname !== "/messages") throw new Error("Desktop character card did not open Messages");
+      if (new URL(page.url()).pathname !== "/messages") throw new Error("Desktop toolbar did not open Messages");
       await page.goto(new URL("/", baseUrl).toString(), { waitUntil: "domcontentloaded" });
-      await page.locator(".home-v2-character-identity").click();
+      await page.locator(".home-v2-left-character-name").click();
       await page.waitForTimeout(150);
-      if (new URL(page.url()).pathname !== "/character") throw new Error("Desktop character card did not open Character Hub");
-      console.log(`Desktop Home context actions passed (${characterName.trim()})`);
+      if (new URL(page.url()).pathname !== "/character") throw new Error("Desktop active-character rail did not open Character Hub");
+      console.log("Desktop toolbar and active-character navigation passed");
     }
     await page.close();
   }

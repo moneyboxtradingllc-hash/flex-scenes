@@ -5,7 +5,7 @@ import type { AppSnapshot, MediaAsset } from "@/lib/domain";
 import { HomeDesktop, HomeMobile } from "./home-desktop";
 import "./home-v2.css";
 
-export type HomeDestination = "home" | "explore" | "create" | "reels" | "library" | "messages" | "character" | "jobs" | "collections" | "lab";
+export type HomeDestination = "home" | "explore" | "create" | "reels" | "library" | "messages" | "character" | "jobs" | "collections" | "settings" | "lab";
 
 export type HomeActions = {
   data: AppSnapshot;

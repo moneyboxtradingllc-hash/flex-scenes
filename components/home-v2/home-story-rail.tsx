@@ -24,7 +24,7 @@ export function HomeStoryRail({ characters, onCreate, onCharacter }: {
   return (
     <section className="home-v2-stories" aria-label="Your characters">
       <button className="home-v2-story" onClick={onCreate} aria-label="Create a new scene">
-        <span className="home-v2-story-ring is-add"><UiIcon name="create" /></span><span>Your Story</span>
+        <span className="home-v2-story-ring is-add"><UiIcon name="create" /></span><span>New Scene</span>
       </button>
       {characters.map((character, index) => (
         <button className="home-v2-story" key={character.id} onClick={() => onCharacter(character.id)} aria-label={`Open ${character.name}`}>
