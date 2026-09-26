@@ -52,7 +52,7 @@ describe("Reference Vault domain", () => {
   });
 
   it("removing a Vault mapping leaves the underlying media available", () => {
-    db.prepare("INSERT INTO characters VALUES(?,?,?,?,?,?,?,?,?)").run(characterId, "Reference QA", "", "", "", "", "", "{}", now);
+    db.prepare("INSERT INTO characters(id,name,handle,portraitUrl,description,personality,identityNotes,defaultsJson,createdAt,archived) VALUES(?,?,?,?,?,?,?,?,?,0)").run(characterId, "Reference QA", "", "", "", "", "", "{}", now);
     const asset: MediaAsset = { ...media[0], id: `asset-${randomUUID()}`, title: "Persisted QA reference" };
     repository.saveMediaAsCharacterReference(asset, "face", true);
     expect(repository.characterReferences(characterId).some((item) => item.mediaId === asset.id)).toBe(true);

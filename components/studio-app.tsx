@@ -22,6 +22,7 @@ import { UiIcon } from "@/components/ui-icon";
 import { MobileAppShell } from "@/components/mobile-shell/mobile-app-shell";
 import { ReferenceVault } from "@/components/reference-vault";
 import { LibraryCharacterPortrait, LibraryMediaThumbnail } from "@/components/library-media-thumbnail";
+import { CharacterProfileDraftControls } from "@/components/character-profile-draft-controls";
 
 type View =
   | "home"
@@ -1943,6 +1944,7 @@ function CharacterSettings({
           <p className="mt-2 text-xs text-zinc-500">Adult conversation remains unavailable unless both fields and provider capability explicitly allow it.</p>
         </section>
       )}
+      {brain && <div className="mt-5"><CharacterProfileDraftControls character={character} profile={brain} refresh={refresh} onApplied={(result) => { setForm(result.character); setBrain(result.profile); }} /></div>}
       <button
         onClick={update}
         className="mt-5 rounded-2xl bg-fuchsia-500 px-5 py-3 font-bold"

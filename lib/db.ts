@@ -33,7 +33,8 @@ db.exec("CREATE TABLE IF NOT EXISTS schemaMigrations (version INTEGER PRIMARY KE
 for (const migration of [
   {version:1,name:"character-director-m1",file:"001_character_director.sql"},
   {version:2,name:"separate-creative-and-conversation-profiles",file:"002_separate_creative_and_conversation_profiles.sql"},
-  {version:3,name:"character-brain-foreign-keys",file:"003_character_brain_foreign_keys.sql"},
+    {version:3,name:"character-brain-foreign-keys",file:"003_character_brain_foreign_keys.sql"},
+    {version:4,name:"character-roster-archive",file:"004_character_roster_archive.sql"},
 ]) {
   if (db.prepare("SELECT version FROM schemaMigrations WHERE version=?").get(migration.version)) continue;
   const sql = fs.readFileSync(path.join(process.cwd(), "lib", "migrations", migration.file), "utf8");

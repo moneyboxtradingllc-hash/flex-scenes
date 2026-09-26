@@ -9,9 +9,13 @@ export function emptyCharacterProfile(characterId: string): CharacterProfile {
     conversationalProfile: {
       speakingStyle: "", vocabulary: [], confidence: 0, humorStyle: "",
       emotionalExpressiveness: 0, attitude: "", boundaries: [], lore: "", relationshipNotes: "",
+      seductionStyle: "", flirtIntensity: 0, naughtiness: 0, provocationStyle: "", dirtyHumor: "",
+      possessiveness: 0, approvalSeeking: 0, initiativeStyle: "", favoriteTeasingPatterns: [],
+      privateRelationshipDynamic: "", escalationStyle: "", spicyScenePreferences: [],
+      permissionStyle: "", approvalReaction: "", rejectionReaction: "",
     },
     creativeProfile: {
-      favoriteEnvironments: [], wardrobeCategories: [], preferredLighting: [], preferredMoods: [],
+      visualBrief: "", favoriteSceneTypes: [], favoriteEnvironments: [], wardrobeCategories: [], preferredLighting: [], preferredMoods: [],
       preferredShotTypes: [], cameraEnergy: [], mediaBalance: "balanced", experimentationLevel: 0,
       visualThemes: [], avoidedThemes: [], ideasToTry: [], ideasTiredOf: [], creativeBoldness: 0,
       noveltyPreference: 0, repetitionTolerance: 0,

@@ -3,6 +3,8 @@
 import { useCallback, useRef, useState } from "react";
 import type { AppSnapshot, MediaAsset } from "@/lib/domain";
 import { LibraryCharacterPortrait, LibraryMediaThumbnail } from "@/components/library-media-thumbnail";
+import { emptyCharacterProfile } from "@/lib/brain-defaults";
+import { CharacterProfileDraftControls } from "@/components/character-profile-draft-controls";
 
 type Tab = "Grid" | "Videos" | "References" | "Collections";
 type ThumbnailState = "image" | "poster" | "video-frame" | "video-loading" | "unavailable";
@@ -45,6 +47,7 @@ export function PremiumCharacterHub(props: PremiumCharacterHubProps) {
       assets: collection.mediaIds.map((id) => media.find((asset) => asset.id === id)).filter((asset): asset is MediaAsset => Boolean(asset)),
     }))
     .filter((collection) => collection.assets.length > 0);
+  const profile = data.characterProfiles.find((item) => item.characterId === character.id) ?? emptyCharacterProfile(character.id);
 
   return <>
     <div className="character-hub-desktop mx-auto max-w-[760px]">
@@ -61,6 +64,10 @@ export function PremiumCharacterHub(props: PremiumCharacterHubProps) {
           <button onClick={() => go("settings")} className="rounded-xl bg-white/8 px-3 py-2.5 text-sm font-semibold">Settings</button>
         </div>
       </section>
+      <details className="mt-3 rounded-xl border border-white/10 bg-white/[.025] p-3">
+        <summary className="cursor-pointer list-none text-sm font-semibold text-fuchsia-200">Generate Profile Draft</summary>
+        <div className="mt-3"><CharacterProfileDraftControls character={character} profile={profile} refresh={refresh ?? (async () => undefined)} /></div>
+      </details>
       <div className="mt-7 flex gap-4 overflow-x-auto pb-2">
         {["Looks", "Outfits", "Locations", "Motion", "Favorites"].map((name, index) => {
           const asset = media.length ? media[index % media.length] : undefined;
@@ -73,12 +80,13 @@ export function PremiumCharacterHub(props: PremiumCharacterHubProps) {
       <div className="mt-5 flex border-b border-white/8">{(["Grid", "Videos", "References", "Collections"] as Tab[]).map((item) => <button key={item} onClick={() => setTab(item)} className={`px-4 pb-3 text-sm font-semibold ${tab === item ? "border-b-2 border-fuchsia-400 text-white" : "text-zinc-500"}`}>{item}</button>)}</div>
       {tab === "Collections" ? <div className="grid grid-cols-2 gap-3 py-5">{collections.map((collection) => <div key={collection.id} className="rounded-2xl bg-white/[.045] p-4"><b>{collection.name}</b><p className="mt-1 text-xs text-zinc-500">{collection.assets.length} scenes</p></div>)}</div> : <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4">{shown.map((asset) => <button key={asset.id} onClick={() => select(asset)} className="group relative overflow-hidden rounded-xl bg-white/5"><LibraryMediaThumbnail asset={asset} alt={asset.title} className="aspect-square w-full object-cover transition duration-200 group-hover:scale-[1.03]" />{asset.type === "video" && <span className="absolute bottom-1 right-1 rounded-full bg-black/70 px-1.5 py-0.5 text-[10px]">▶</span>}</button>)}</div>}
     </div>
-    <MobileCharacterHub character={character} images={images} videos={videos} refs={refs} tab={tab} setTab={setTab} shown={shown} collections={collections} select={select} create={create} go={go} onBack={onBack} openMessages={openMessages} manageReferences={manageReferences} onThumbnailStateChange={onThumbnailStateChange} refresh={refresh} />
+    <MobileCharacterHub character={character} profile={profile} images={images} videos={videos} refs={refs} tab={tab} setTab={setTab} shown={shown} collections={collections} select={select} create={create} go={go} onBack={onBack} openMessages={openMessages} manageReferences={manageReferences} onThumbnailStateChange={onThumbnailStateChange} refresh={refresh} />
   </>;
 }
 
-function MobileCharacterHub({ character, images, videos, refs, tab, setTab, shown, collections, select, create, go, onBack, openMessages, manageReferences, onThumbnailStateChange, refresh }: {
+function MobileCharacterHub({ character, profile, images, videos, refs, tab, setTab, shown, collections, select, create, go, onBack, openMessages, manageReferences, onThumbnailStateChange, refresh }: {
   character: Character;
+  profile: import("@/lib/domain").CharacterProfile;
   images: MediaAsset[];
   videos: MediaAsset[];
   refs: AppSnapshot["characterReferences"];
@@ -99,6 +107,7 @@ function MobileCharacterHub({ character, images, videos, refs, tab, setTab, show
   const [portraitUploading, setPortraitUploading] = useState(false);
   const [portraitError, setPortraitError] = useState("");
   const [activeCollectionId, setActiveCollectionId] = useState("");
+  const [profileAssistantOpen, setProfileAssistantOpen] = useState(false);
   const activeCollection = collections.find((item) => item.id === activeCollectionId);
   const selectTab = (next: Tab) => { setActiveCollectionId(""); setTab(next); };
 
@@ -114,6 +123,7 @@ function MobileCharacterHub({ character, images, videos, refs, tab, setTab, show
       <div className="character-mobile-actions"><button onClick={() => openMessages ? openMessages(character.id) : go("messages")}>Message</button><button onClick={() => create(undefined, undefined, character.id)}>Create Scene</button></div>
       <p className="character-mobile-stats"><span><b>{images.length}</b> Images</span><i aria-hidden="true">·</i><span><b>{videos.length}</b> Videos</span><i aria-hidden="true">·</i><span><b>{refs.length}</b> References</span></p>
     </section>
+    <section className="character-profile-assistant-entry mx-auto mt-3 w-full px-4"><button type="button" aria-expanded={profileAssistantOpen} onClick={() => setProfileAssistantOpen((open) => !open)} className="min-h-11 rounded-xl border border-fuchsia-300/20 px-4 text-sm font-semibold text-fuchsia-200">{profileAssistantOpen ? "Close Profile Assistant" : "Generate Profile Draft"}</button>{profileAssistantOpen && <div className="mt-3"><CharacterProfileDraftControls character={character} profile={profile} refresh={refresh ?? (async () => undefined)} /></div>}</section>
     <nav className="character-mobile-tabs" aria-label="Character media">{(["Grid", "Videos", "References", "Collections"] as Tab[]).map((item) => <button key={item} aria-pressed={tab === item} onClick={() => selectTab(item)}>{item}{item === "References" && <small>{refs.length}</small>}</button>)}</nav>
     {tab === "Collections" ? activeCollection ? <section className="character-mobile-collection-detail"><button onClick={() => setActiveCollectionId("")}>‹ Collections</button><h2>{activeCollection.name}</h2><div className="character-mobile-grid">{activeCollection.assets.map((asset, index) => <button key={asset.id} onClick={() => select(asset)} aria-label={`Open ${asset.title}`}><LibraryMediaThumbnail asset={asset} alt={asset.title} loading={index < 9 ? "eager" : "lazy"} />{asset.type === "video" && <span className="character-mobile-video-mark">▶</span>}</button>)}</div></section> : <div className="character-mobile-collections">{collections.length ? collections.map((collection) => <button key={collection.id} onClick={() => setActiveCollectionId(collection.id)}><span className={`character-mobile-cover ${collection.assets.length === 1 ? "is-single" : collection.assets.length === 2 ? "is-double" : collection.assets.length === 3 ? "is-triple" : ""}`}>{collection.assets.slice(0, 4).map((asset) => <LibraryMediaThumbnail key={asset.id} asset={asset} alt={asset.title} loading="eager" />)}</span><b>{collection.name}</b><small>{collection.assets.length} {collection.assets.length === 1 ? "scene" : "scenes"}</small></button>) : <p className="character-mobile-empty">No collections contain {character.name}&apos;s media yet.</p>}</div> : <>
       <div className="character-mobile-grid">{shown.map((asset, index) => <button key={asset.id} onClick={() => select(asset)} aria-label={`Open ${asset.title}`}><LibraryMediaThumbnail asset={asset} alt={asset.title} loading={index < 9 ? "eager" : "lazy"} onStateChange={onThumbnailStateChange} />{asset.type === "video" && <span className="character-mobile-video-mark">▶</span>}{tab === "References" && <small>{refs.find((reference) => reference.mediaId === asset.id)?.role ?? "Reference"}</small>}</button>)}</div>

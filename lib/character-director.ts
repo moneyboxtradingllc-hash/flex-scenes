@@ -90,10 +90,24 @@ export class MockCharacterBrainProvider implements CharacterConversationProvider
     const recent=unique(context.recentMessages.filter((m)=>m.role==="user").slice(-3).map((m)=>m.body),2);
     const continuity=recent.length?` I’m keeping in mind your note about ${recent.at(-1)!.slice(0,80).replace(/[.!?]+$/g,"")}.`:"";
     let message:string;
-    if(voice.speakingStyle.toLowerCase().includes("economical")||voice.attitude.toLowerCase().includes("analytical")) message=`That tracks. I’d keep the frame deliberate and let one clear detail carry it.${continuity}`;
+    const declined=/\b(stop|no thanks|not now|not interested|change the subject|different direction|don't continue|do not continue)\b/i.test(userText);
+    const approved=/\b(yes|sounds good|love that|great idea|go ahead|please do)\b/i.test(userText);
+    if(declined && voice.rejectionReaction) message=voice.rejectionReaction;
+    else if(approved && voice.approvalReaction) message=voice.approvalReaction;
+    else if(voice.seductionStyle) {
+      const style=voice.seductionStyle.toLowerCase();
+      const tease=voice.favoriteTeasingPatterns[0];
+      if(style.includes("slow-burn")) message=`I was thinking of something quieter—closer, more personal, with room for the anticipation to build.${tease?` Maybe I’ll start with ${tease}.`:""}${continuity}`;
+      else if(style.includes("dark feminine")) message=`There’s something about this direction that feels better after dark. I have a thought, but I want to know if you’re in the mood for it.${continuity}`;
+      else if(style.includes("sweet-but-naughty")) message=`I can keep this sweet and innocent… or let one little hint slip and see if you ask me to continue.${continuity}`;
+      else if(style.includes("cute-but-dangerous")) message=`I have a sweet version and a much bolder little twist. Which one do you want to hear first?${continuity}`;
+      else if(style.includes("troublemaker")) message=`I’ve got a bold idea that might get exactly the reaction I’m hoping for. Want to hear the cheeky version?${continuity}`;
+      else message=`Mmm, I like this direction. I have a tempting idea, but I’ll let you decide how bold we get.${tease?` Maybe I’ll start with ${tease}.`:""}${continuity}`;
+    }
+    else if(voice.speakingStyle.toLowerCase().includes("economical")||voice.attitude.toLowerCase().includes("analytical")) message=`That tracks. I’d keep the frame deliberate and let one clear detail carry it.${continuity}`;
     else if(voice.speakingStyle.toLowerCase().includes("lively")||voice.attitude.toLowerCase().includes("optimistic")) message=`Oh, I like where you’re taking that. There’s room for one small, lovely detail to make it feel lived in.${continuity}`;
     else message=`I can see that. The light and the quieter framing feel like a good thread for us to follow.${continuity}`;
-    const reply:CharacterBrainResponse={message,intent:"conversation",memoryCandidates:userText.length>20?[userText.slice(0,220)]:[],creativeSignals:{voice:voice.speakingStyle,continuity:recent.length>0}};
+    const reply:CharacterBrainResponse={message,intent:"conversation",memoryCandidates:userText.length>20?[userText.slice(0,220)]:[],creativeSignals:{voice:voice.speakingStyle,seductionStyle:voice.seductionStyle,flirtIntensity:voice.flirtIntensity,naughtiness:voice.naughtiness,relationshipDynamic:voice.privateRelationshipDynamic,continuity:recent.length>0}};
     if(!validateCharacterBrainResponse(reply))throw new Error("Mock conversation response failed validation");
     return reply;
   }
@@ -124,15 +138,20 @@ export class MockCharacterBrainProvider implements CharacterConversationProvider
     }
     const scene=chosen!;const novelty=best!;const imageOrVideoIntent:SceneProposal["imageOrVideoIntent"]=profile.mediaBalance==="balanced"?(chosenIndex%2?"video":"image"):profile.mediaBalance;
     const title=scene.location!.toLowerCase().includes("train")?"Before the First Train":scene.location!.toLowerCase().includes("diner")?"Before the Coffee Cools":scene.location!.toLowerCase().includes("roof")?"Above the City Glow":scene.location!.toLowerCase().includes("sunroom")?"Light Finds the Table":scene.location!.toLowerCase().includes("gallery")?"Quiet Between Frames":scene.location!.toLowerCase().includes("courtyard")?"A Little Sun in the Courtyard":`A New Frame at ${scene.location!.replace(/^(a|an|the) /i,"").replace(/\b\w/g,(c)=>c.toUpperCase())}`;
-    const imagePlan=`${context.character.name} in ${scene.location}, wearing ${scene.wardrobe}. ${scene.mood}, lit with ${scene.lighting}. ${scene.shotType}; ${scene.cameraDirection}. ${profile.visualThemes.join(", ")}. Maintain the character's canonical visual identity.`;
-    const videoPlan=`${context.character.name} in ${scene.location}, wearing ${scene.wardrobe}. ${scene.mood}; ${scene.lighting}. ${scene.shotType} with ${scene.cameraDirection}. Natural restrained motion; keep face and outfit consistent.`;
-    const pitch=voice.speakingStyle.toLowerCase().includes("economical")?`I’ve got a thought. Let’s leave the soft, familiar setups behind and use ${scene.location} for a ${scene.mood} frame. The ${scene.wardrobe} and ${scene.lighting} give the composition a clear line; I’d keep the camera ${scene.cameraDirection}.`:
+    const sceneType=profile.favoriteSceneTypes.length?profile.favoriteSceneTypes[chosenIndex%profile.favoriteSceneTypes.length]:"";
+    const visualBrief=profile.visualBrief?` ${profile.visualBrief}.`:"";
+    const sceneTreatment=sceneType?` Scene treatment: ${sceneType}.`:"";
+    const imagePlan=`${context.character.name} in ${scene.location}, wearing ${scene.wardrobe}. ${scene.mood}, lit with ${scene.lighting}. ${scene.shotType}; ${scene.cameraDirection}.${sceneTreatment}${visualBrief} ${profile.visualThemes.join(", ")}. Maintain the character's canonical visual identity.`;
+    const videoPlan=`${context.character.name} in ${scene.location}, wearing ${scene.wardrobe}. ${scene.mood}; ${scene.lighting}. ${scene.shotType} with ${scene.cameraDirection}.${sceneTreatment}${visualBrief} Natural restrained motion; keep face and outfit consistent.`;
+    const basePitch=voice.speakingStyle.toLowerCase().includes("economical")?`I’ve got a thought. Let’s leave the soft, familiar setups behind and use ${scene.location} for a ${scene.mood} frame. The ${scene.wardrobe} and ${scene.lighting} give the composition a clear line; I’d keep the camera ${scene.cameraDirection}.`:
       voice.speakingStyle.toLowerCase().includes("lively")?`I have a fun one for us: ${scene.location}, with ${scene.wardrobe} and all that ${scene.lighting}. I want it to feel ${scene.mood}, like we caught a little moment that was just about to happen. Let the camera ${scene.cameraDirection}.`:
       `I want to change the rhythm a little. Let’s meet at ${scene.location} in ${scene.wardrobe}, with ${scene.lighting} settling into a ${scene.mood} frame. I’m picturing a ${scene.shotType} and a camera that stays ${scene.cameraDirection}.`;
+    const teasingPattern=voice.favoriteTeasingPatterns.length?voice.favoriteTeasingPatterns[chosenIndex%voice.favoriteTeasingPatterns.length]:"";
+    const pitch=basePitch+(voice.seductionStyle?(teasingPattern?` I might lean into ${teasingPattern}, then let you decide whether we take the idea any further.`:" I’ll keep the idea suggestive and let you set the pace."):"");
     const ideaToTry=profile.ideasToTry.length?profile.ideasToTry[chosenIndex%profile.ideasToTry.length]:"";
     const boldNote=profile.creativeBoldness>0.7?" Add one unexpected visual interruption while keeping her identity clear.":" Keep the styling intentional and the visual direction restrained.";
     const proposal:Partial<SceneProposal>={parentProposalId:parent?.id??null,title,naturalLanguagePitch:pitch,concept:`${scene.mood} study shaped by ${scene.location}, ${profile.visualThemes[chosenIndex%Math.max(profile.visualThemes.length,1)]??"natural detail"}${ideaToTry?`; exploring ${ideaToTry}`:""}`,location:scene.location!,wardrobe:scene.wardrobe!,mood:scene.mood!,lighting:scene.lighting!,shotDescription:scene.shotType!,cameraDirection:scene.cameraDirection!,imageOrVideoIntent,suggestedAspectRatio:imageOrVideoIntent==="video"?"9:16":"4:5",suggestedDuration:imageOrVideoIntent==="video"?5:null,suggestedReferenceIds:[],suggestedReferenceRoles:{},proposedImagePlan:imagePlan+boldNote,proposedVideoPlan:videoPlan+boldNote,noveltyReason:novelty.similarDimensions.length?`A deliberate callback with a different angle; vary ${novelty.similarDimensions.join(" and ")}.${ideaToTry?` It also explores ${ideaToTry}.`:""}`:`A fresh combination: ${scene.location} and ${scene.lighting} have not appeared in her recent scene history.${ideaToTry?` This develops her idea to try: ${ideaToTry}.`:""}`,sourceMessageIds:[],status:"PROPOSED",proposalSource:parent?"remix":"conversation",noveltyScore:novelty.noveltyScore,similarityScore:novelty.similarityScore,characterId:context.character.id,conversationId:context.conversationId,createdAt:now(),updatedAt:now()};
-    const response:CharacterBrainResponse={message:pitch,intent:parent?"scene_revision":"scene_proposal",sceneProposal:proposal,memoryCandidates:[],creativeSignals:{noveltyScore:novelty.noveltyScore,similarityScore:novelty.similarityScore,variationIndex:chosenIndex,similarDimensions:novelty.similarDimensions.join(", ")}};
+    const response:CharacterBrainResponse={message:pitch,intent:parent?"scene_revision":"scene_proposal",sceneProposal:proposal,memoryCandidates:[],creativeSignals:{noveltyScore:novelty.noveltyScore,similarityScore:novelty.similarityScore,variationIndex:chosenIndex,similarDimensions:novelty.similarDimensions.join(", "),sceneType,visualBrief,seductionStyle:voice.seductionStyle,flirtIntensity:voice.flirtIntensity,relationshipDynamic:voice.privateRelationshipDynamic,spicyScenePreferences:voice.spicyScenePreferences.join(", ")}};
     if(!validateCharacterBrainResponse(response))throw new Error("Mock scene proposal failed structured output validation");
     return response;
   }

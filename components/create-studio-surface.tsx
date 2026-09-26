@@ -29,6 +29,8 @@ export function PremiumCreateStudio({ data, context, onJobCreated }: { data: App
   const [localAssets, setLocalAssets] = useState<MediaAsset[]>([]);
   const capabilities = data.capabilities.find((item) => item.mode === mode);
   const character = data.characters.find((item) => item.id === characterId);
+  const characterProfile = data.characterProfiles.find((item) => item.characterId === characterId);
+  const characterVisualGuidance = characterProfile ? [characterProfile.creativeProfile.visualBrief, characterProfile.creativeProfile.wardrobeCategories.join(", "), characterProfile.creativeProfile.favoriteEnvironments.join(", "), characterProfile.creativeProfile.favoriteSceneTypes.join(", "), characterProfile.creativeProfile.preferredMoods.join(", "), characterProfile.creativeProfile.preferredLighting.join(", ")].filter(Boolean).join(". ") : "";
   const canonicalPack = useMemo(() => resolveCanonicalReferences(characterId ?? "", mode, data.characterReferences, data.media, 3, capabilities), [data.characterReferences, data.media, characterId, mode, capabilities]);
   const canonicalIds = canonicalPack.assetIds;
   const defaultReferenceIds = canonicalIds.slice(0, 3);
@@ -63,7 +65,8 @@ export function PremiumCreateStudio({ data, context, onJobCreated }: { data: App
   const generate = async () => {
     if (!characterId || !capabilities || !prompt.trim()) return;
     const referenceAssetRoles = Object.fromEntries(effectiveRefs.map((id) => [id, context.referenceAssetRoles?.[id] ?? canonicalPack.roles[id] ?? data.characterReferences.find((item) => item.characterId === characterId && item.mediaId === id)?.role ?? (data.media.find((asset) => asset.id === id)?.type === "video" ? "motion" : "other")]));
-    const input: GenerationInput = { characterId, mode, prompt, aspectRatio: ratio, preset: mode === "image" ? "Hero" : `${duration} seconds`, count: mode === "image" ? 1 : undefined, duration: mode === "video" ? duration : undefined, simulation: "success", referenceAssetIds: effectiveRefs, referenceAssetRoles, proposalId: context.proposalId ?? null, sceneContext, parentMediaId: context.parent?.id ?? null, conversationId: context.conversationId ?? null };
+    const composedPrompt = [prompt.trim(), characterVisualGuidance ? `Character profile visual direction: ${characterVisualGuidance}.` : ""].filter(Boolean).join("\n\n");
+    const input: GenerationInput = { characterId, mode, prompt: composedPrompt, aspectRatio: ratio, preset: mode === "image" ? "Hero" : `${duration} seconds`, count: mode === "image" ? 1 : undefined, duration: mode === "video" ? duration : undefined, simulation: "success", referenceAssetIds: effectiveRefs, referenceAssetRoles, proposalId: context.proposalId ?? null, sceneContext, parentMediaId: context.parent?.id ?? null, conversationId: context.conversationId ?? null };
     const response = await fetch("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) });
     const job = await asJson<GenerationJob>(response);
     if (response.ok && job?.id) onJobCreated(job);

@@ -12,7 +12,7 @@ export function seedTestDatabase() {
     ["char-iona","Iona Reed","@ionareed","Architect of quiet, electric scenes.","Thoughtful, dry humor, patient.","Short dark curls, sculptural silhouettes, cobalt accents.","#2563eb"],
     ["char-mara","Mara Sol","@marasol","Golden-hour storyteller and collector of small details.","Direct, playful, optimistic.","Honey-toned skin, copper waves, luminous styling.","#db2777"]
   ];
-  for(const [id,name,handle,description,personality,identityNotes] of chars) { const portrait="/qa-fixtures/qa-test.svg"; db.prepare("INSERT INTO characters VALUES(?,?,?,?,?,?,?,?,?)").run(id,name,handle,portrait,description,personality,identityNotes,JSON.stringify({aspectRatio:"4:5",preset:"Hero"}),now); }
+  for(const [id,name,handle,description,personality,identityNotes] of chars) { const portrait="/qa-fixtures/qa-test.svg"; db.prepare("INSERT INTO characters(id,name,handle,portraitUrl,description,personality,identityNotes,defaultsJson,createdAt,archived) VALUES(?,?,?,?,?,?,?,?,?,0)").run(id,name,handle,portrait,description,personality,identityNotes,JSON.stringify({aspectRatio:"4:5",preset:"Hero"}),now); }
   const scenes=[
     ["char-nova","After Hours Atrium","Glass, rain, and a quiet neon horizon.","A cinematic editorial portrait in a rain-lit atrium.","#7c3aed","image"],
     ["char-iona","Blue Hour Transit","A still moment between destinations.","An editorial frame at blue hour beside a modern train.","#2563eb","video"],
