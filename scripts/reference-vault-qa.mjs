@@ -121,6 +121,11 @@ try {
   const createBrokenImages = await page.locator("img").evaluateAll((imgs) => imgs.filter((img) => img.getClientRects().length > 0 && getComputedStyle(img).visibility !== "hidden" && (!img.complete || img.naturalWidth === 0)).map((img) => ({ src: img.src, alt: img.alt, html: img.outerHTML })));
   if (createBrokenImages.length) throw new Error(`Create reference previews contain broken image elements: ${JSON.stringify(createBrokenImages)}`);
 
+  await page.evaluate(() => fetch("/api/actions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "character-create", name: "Valeria", description: "" }) }));
+  await page.goto(origin + "/character/references", { waitUntil: "domcontentloaded" });
+  const selectedVaultCharacter = await page.locator(".reference-vault-header select option:checked").textContent();
+  if (selectedVaultCharacter?.trim() !== "Valeria") throw new Error(`Unparameterized Vault route did not select the existing Valeria record: ${selectedVaultCharacter}`);
+
   for (const width of [390, 430]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 932 });
     await page.goto(origin + route, { waitUntil: "domcontentloaded" });

@@ -81,8 +81,12 @@ export function StudioApp({
       : (route.split("/")[0] as View) || "home",
   );
   const previousView = useRef<View>("home");
+  const routedCharacterId = route.split("/")[2];
+  const defaultVaultCharacter = route.startsWith("character/references")
+    ? initial.characters.find((item) => item.name.trim().toLocaleLowerCase() === "valeria")
+    : undefined;
   const [activeCharacter, setActiveCharacter] = useState(
-    initial.characters.find((item) => item.id === route.split("/")[2])?.id ?? initial.characters[0]?.id,
+    initial.characters.find((item) => item.id === routedCharacterId)?.id ?? defaultVaultCharacter?.id ?? initial.characters[0]?.id,
   );
   const [selected, setSelected] = useState<MediaAsset | null>(null);
   const [mobileThreadActive, setMobileThreadActive] = useState(false);
