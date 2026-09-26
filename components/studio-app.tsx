@@ -68,9 +68,11 @@ const json = <T,>(r: Response) => r.json() as Promise<T>;
 export function StudioApp({
   initial,
   route,
+  initialCharacterId,
 }: {
   initial: AppSnapshot;
   route: string;
+  initialCharacterId?: string;
 }) {
   const [data, setData] = useState(initial);
   const [view, setView] = useState<View>(
@@ -81,13 +83,22 @@ export function StudioApp({
       : (route.split("/")[0] as View) || "home",
   );
   const previousView = useRef<View>("home");
-  const routedCharacterId = route.split("/")[2];
+  const routedCharacterId = initialCharacterId ?? route.split("/")[2];
   const defaultVaultCharacter = route.startsWith("character/references")
     ? initial.characters.find((item) => item.name.trim().toLocaleLowerCase() === "valeria")
     : undefined;
   const [activeCharacter, setActiveCharacter] = useState(
     initial.characters.find((item) => item.id === routedCharacterId)?.id ?? defaultVaultCharacter?.id ?? initial.characters[0]?.id,
   );
+  const activeCharacterIdRef = useRef(activeCharacter);
+  const selectCharacter = (characterId: string) => {
+    activeCharacterIdRef.current = characterId;
+    setActiveCharacter(characterId);
+    const currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.set("characterId", characterId);
+    window.history.replaceState({}, "", `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`);
+  };
+  const referenceVaultReturnView = useRef<View>("character");
   const [selected, setSelected] = useState<MediaAsset | null>(null);
   const [mobileThreadActive, setMobileThreadActive] = useState(false);
   const [messagesEntryPage, setMessagesEntryPage] = useState<"list" | "thread" | "details">("list");
@@ -108,7 +119,7 @@ export function StudioApp({
     prompt?: string;
     ratio?: string;
     duration?: number;
-  }>({});
+  }>({ characterId: initial.characters.find((item) => item.id === routedCharacterId)?.id });
   const refresh = async () => {
     const next = await json<AppSnapshot>(
       await fetch("/api/bootstrap", { cache: "no-store" }),
@@ -119,10 +130,19 @@ export function StudioApp({
   const go = (next: View, context?: typeof createContext) => {
     if (next === "character" && view !== "settings") characterHubReturnView.current = view;
     if (next !== view) previousView.current = view;
+    const destinationCharacterId = context?.characterId ?? activeCharacterIdRef.current ?? activeCharacter;
+    if (context?.characterId) selectCharacter(context.characterId);
     setView(next);
     if (context) setCreateContext(context);
-    const path = next === "home" ? "/" : next === "reference-vault" ? `/character/references?characterId=${encodeURIComponent(activeCharacter ?? "")}` : `/${next}`;
+    const basePath = next === "home" ? "/" : next === "reference-vault" ? "/character/references" : `/${next}`;
+    const path = destinationCharacterId
+      ? `${basePath}${basePath.includes("?") ? "&" : "?"}characterId=${encodeURIComponent(destinationCharacterId)}`
+      : basePath;
     window.history.pushState({}, "", path);
+  };
+  const openReferenceVault = (source: "character" | "settings") => {
+    referenceVaultReturnView.current = source;
+    go("reference-vault");
   };
   const openJob = (job: GenerationJob) => {
     setSelectedJobId(job.id);
@@ -156,7 +176,7 @@ export function StudioApp({
   const openConversation = (id: string) => { setTargetConversationId(id); setMessagesEntryPage("thread"); go("messages"); };
   const openCharacterHubFromConversation = (characterId: string, conversationId: string) => {
     characterHubReturnView.current = "messages";
-    setActiveCharacter(characterId);
+    selectCharacter(characterId);
     setTargetConversationId(conversationId);
     setMessagesEntryPage("details");
     setCharacterHubReturn({ conversationId, characterId });
@@ -224,7 +244,7 @@ export function StudioApp({
       character={active}
       navigate={(destination) => go(destination)}
       openConversation={openConversation}
-      setCharacter={setActiveCharacter}
+      setCharacter={selectCharacter}
       select={setSelected}
       favorite={favorite}
       reference={reference}
@@ -241,13 +261,13 @@ export function StudioApp({
         animate={(asset) => { setSelected(null); createFrom(asset, undefined, asset.characterId, "video"); }}
         select={setSelected}
         refresh={refresh}
-        openCharacter={(id) => { setSelected(null); setActiveCharacter(id); go("character"); }}
+        openCharacter={(id) => { setSelected(null); selectCharacter(id); go("character"); }}
       /> : null}
     />;
   }
   return (
     <main className={`studio-shell mx-auto min-h-screen max-w-[1680px] bg-[#08090d] pb-20 text-zinc-100 md:grid md:grid-cols-[220px_minmax(0,1fr)] ${view === "home" ? "is-home-view" : ""} ${view === "explore" ? "mobile-explore-flow" : ""} ${view === "library" ? "mobile-library-flow" : ""} ${view === "reels" ? "mobile-reels-view" : ""} ${isWideArchive ? "xl:grid-cols-[220px_minmax(0,1fr)]" : "xl:grid-cols-[220px_minmax(0,1fr)_300px]"} ${view === "messages" && mobileThreadActive ? "mobile-thread-active" : ""} md:pb-0`}>
-      <MobileAppShell view={view} characters={data.characters} character={active} navigate={(destination) => { if (destination === "messages") { setTargetConversationId(""); setMessagesEntryPage("list"); setCharacterHubReturn(null); } go(destination as View); }} setCharacter={setActiveCharacter} messageThread={view === "messages" && mobileThreadActive} overlayOpen={Boolean(selected)} />
+      <MobileAppShell view={view} characters={data.characters} character={active} navigate={(destination) => { if (destination === "messages") { setTargetConversationId(""); setMessagesEntryPage("list"); setCharacterHubReturn(null); } go(destination as View); }} setCharacter={selectCharacter} messageThread={view === "messages" && mobileThreadActive} overlayOpen={Boolean(selected)} />
       <aside className="app-desktop-nav hidden border-r border-white/8 bg-[#0c0d12] p-5 md:block">
         <button
           onClick={() => go("home")}
@@ -298,8 +318,8 @@ export function StudioApp({
       <section className="min-w-0 border-x border-white/5">
         {view !== "reference-vault" && header}
         <div className={`studio-page-content mx-auto w-full ${view === "home" ? "home-page-content" : ""} ${view === "reels" ? "mobile-reels-page-content" : ""} ${view === "library" ? "mobile-library-page-content" : ""} ${isWideArchive ? "max-w-none" : "max-w-[900px]"} p-4 md:p-7`}>
-          {view === "reference-vault" && active && <ReferenceVault data={data} character={active} refresh={refresh} select={setSelected} back={() => go("character")} onCharacterChange={(id) => { setActiveCharacter(id); window.history.replaceState({}, "", `/character/references?characterId=${encodeURIComponent(id)}`); }} createCharacter={async (name, description) => { const response = await fetch("/api/actions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "character-create", name, description }) }); const created = await json<AppSnapshot["characters"][number]>(response); await refresh(); setActiveCharacter(created.id); window.history.replaceState({}, "", `/character/references?characterId=${encodeURIComponent(created.id)}`); return created; }} createWithReferences={(characterId, ids, roles) => { setActiveCharacter(characterId); go("create", { characterId, referenceAssetIds: ids, referenceAssetRoles: roles }); }} />}
-          {view === "explore" && <PremiumExplore data={data} select={setSelected} openCharacter={(id) => { setActiveCharacter(id); go("character"); }} create={createFrom} />}{" "}
+          {view === "reference-vault" && active && <ReferenceVault data={data} character={active} refresh={refresh} select={setSelected} back={() => go(referenceVaultReturnView.current)} onCharacterChange={(id) => { selectCharacter(id); }} createCharacter={async (name, description) => { const response = await fetch("/api/actions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "character-create", name, description }) }); const created = await json<AppSnapshot["characters"][number]>(response); await refresh(); selectCharacter(created.id); return created; }} createWithReferences={(characterId, ids, roles) => { selectCharacter(characterId); go("create", { characterId, referenceAssetIds: ids, referenceAssetRoles: roles }); }} />}
+          {view === "explore" && <PremiumExplore data={data} select={setSelected} openCharacter={(id) => { selectCharacter(id); go("character"); }} create={createFrom} />}{" "}
           {view === "create" && (
             <CapabilityCreate
               data={data}
@@ -319,9 +339,9 @@ export function StudioApp({
               openCharacterConversation={(characterId) => {
                 const conversation = data.conversations.find((entry) => entry.characterId === characterId);
                 if (conversation) openConversation(conversation.id);
-                else { setActiveCharacter(characterId); go("messages"); }
+                else { selectCharacter(characterId); go("messages"); }
               }}
-              openCharacter={(id) => { setActiveCharacter(id); go("character"); }}
+              openCharacter={(id) => { selectCharacter(id); go("character"); }}
             />
           )}{" "}
           {view === "messages" && (
@@ -353,7 +373,7 @@ export function StudioApp({
                 } else go(characterHubReturnView.current);
               }}
               openMessages={messageCharacter}
-              manageReferences={() => go("reference-vault")}
+              manageReferences={() => openReferenceVault("character")}
             />
           )}{" "}
           {view === "settings" && (
@@ -362,7 +382,7 @@ export function StudioApp({
             character={active}
             refresh={refresh}
             go={go}
-            onManageReferences={() => go("reference-vault")}
+            onManageReferences={() => openReferenceVault("settings")}
           />
           )}{" "}
           {view === "jobs" && (
@@ -409,7 +429,7 @@ export function StudioApp({
           animate={(asset) => { setSelected(null); createFrom(asset, undefined, asset.characterId, "video"); }}
           select={setSelected}
           refresh={refresh}
-          openCharacter={(id) => { setSelected(null); setActiveCharacter(id); go("character"); }}
+          openCharacter={(id) => { setSelected(null); selectCharacter(id); go("character"); }}
         />
       )}
     </main>
@@ -1784,10 +1804,8 @@ function CharacterSettings({
   const [brain, setBrain] = useState(data.characterProfiles.find((item) => item.characterId === character?.id));
   const [status, setStatus] = useState("");
   if (!character || !form) return null;
-  const refs = data.characterReferences.filter(
-    (r) => r.characterId === character.id,
-  );
-  const assets = data.media.filter((m) => m.characterId === character.id);
+  const refs = data.characterReferences.filter((reference) => reference.characterId === character.id);
+  const canonicalCount = refs.filter((reference) => reference.active && reference.canonical).length;
   const update = async () => {
     await fetch("/api/actions", {
       method: "POST",
@@ -1808,20 +1826,6 @@ function CharacterSettings({
     if (brain) await fetch("/api/director", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "profile-update", characterId: character.id, ...brain }) });
     await refresh();
     setStatus("Saved");
-  };
-  const add = async (id: string) => {
-    await fetch("/api/actions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "character-reference-add",
-        characterId: character.id,
-        mediaId: id,
-        role: "face",
-        canonical: true,
-      }),
-    });
-    await refresh();
   };
   return (
     <div className="mx-auto max-w-3xl">
@@ -1920,93 +1924,12 @@ function CharacterSettings({
         Save Character Settings
       </button>
       <span className="ml-3 text-sm text-fuchsia-200">{status}</span>
-      <section className="mt-7 rounded-3xl border border-white/8 bg-[#13141b] p-5">
-        <h2 className="font-bold">Reference Vault</h2>
-        <p className="mb-4 text-sm text-zinc-500">
-          Canonical packs are explicit, ordered, and reusable; removing one
-          never deletes its media source.
-        </p>
-        <div className="grid gap-3">
-          {refs.map((r) => {
-            const asset = data.media.find((m) => m.id === r.mediaId);
-            return (
-              <div
-                key={`${r.mediaId}-${r.role}`}
-                className="flex items-center gap-3 rounded-2xl bg-white/5 p-2"
-              >
-                <img
-                  src={asset?.posterUrl ?? asset?.url}
-                  alt=""
-                  className="h-12 w-12 rounded-xl object-cover"
-                />
-                <div className="min-w-0 flex-1">
-                  <b className="text-sm">{asset?.title}</b>
-                  <p className="text-xs text-zinc-500">
-                    {r.role} · {r.canonical ? "canonical" : "support"} ·
-                    priority {r.priority}
-                  </p>
-                </div>
-                <button
-                  onClick={async () => {
-                    await fetch("/api/actions", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        action: "character-reference-update",
-                        characterId: character.id,
-                        mediaId: r.mediaId,
-                        role: r.role,
-                        referencePatch: { canonical: !r.canonical },
-                      }),
-                    });
-                    await refresh();
-                  }}
-                  className="rounded-full bg-white/10 px-3 py-1 text-xs"
-                >
-                  {r.canonical ? "Unmark canonical" : "Mark canonical"}
-                </button>
-                <button
-                  onClick={async () => {
-                    await fetch("/api/actions", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        action: "character-reference-remove",
-                        characterId: character.id,
-                        mediaId: r.mediaId,
-                        role: r.role,
-                      }),
-                    });
-                    await refresh();
-                  }}
-                  className="text-xs text-zinc-500"
-                >
-                  Remove
-                </button>
-              </div>
-            );
-          })}
+      <section className="mt-7 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/8 bg-[#13141b] p-4" aria-label="Reference summary">
+        <div>
+          <h2 className="font-bold">References</h2>
+          <p className="mt-1 text-sm text-zinc-400">{refs.length} total references · {canonicalCount} canonical</p>
         </div>
-        <p className="mt-5 text-sm text-zinc-400">
-          Add existing character media
-        </p>
-        <div className="mt-2 flex gap-2 overflow-x-auto">
-          {assets
-            .filter((m) => !refs.some((r) => r.mediaId === m.id))
-            .map((asset) => (
-              <button
-                key={asset.id}
-                onClick={() => add(asset.id)}
-                className="min-w-20 overflow-hidden rounded-xl"
-              >
-                <img
-                  src={asset.posterUrl ?? asset.url}
-                  alt={asset.title}
-                  className="h-20 w-20 object-cover"
-                />
-              </button>
-            ))}
-        </div>
+        <button onClick={onManageReferences} className="rounded-full border border-white/15 px-4 py-2 text-sm font-semibold text-fuchsia-200">Manage References</button>
       </section>
     </div>
   );

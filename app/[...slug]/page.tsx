@@ -16,6 +16,10 @@ export default async function Catchall({ params, searchParams }: {
     initial = withLibraryPolishFixtures(initial);
   }
   const characterId = Array.isArray(query.characterId) ? query.characterId[0] : query.characterId;
-  const route = slug.join("/") === "character/references" ? `character/references/${characterId ?? ""}` : slug.join("/") === "character" && characterId ? `character/hub/${characterId}` : slug.join("/");
-  return <StudioApp initial={initial} route={route} />;
+  const route = slug.join("/") === "character/references"
+    ? `character/references/${characterId ?? ""}`
+    : slug.join("/") === "character" && characterId
+      ? `character/hub/${characterId}`
+      : slug.join("/");
+  return <StudioApp initial={initial} route={route} initialCharacterId={characterId} />;
 }
