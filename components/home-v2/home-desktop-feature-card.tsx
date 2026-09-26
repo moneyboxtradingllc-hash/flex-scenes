@@ -3,6 +3,7 @@
 import type { AppSnapshot, MediaAsset } from "@/lib/domain";
 import { UiIcon } from "@/components/ui-icon";
 import { HomeRelativeTime } from "./home-relative-time";
+import { LibraryCharacterPortrait } from "@/components/library-media-thumbnail";
 
 export function HomeDesktopFeatureCard({ asset, character, data, onOpen, onFavorite, onReference, onRemix, onCharacter, onMessage, onCreate }: {
   asset: MediaAsset;
@@ -43,7 +44,7 @@ export function HomeDesktopFeatureCard({ asset, character, data, onOpen, onFavor
     <aside className="home-v2-feature-context" aria-label="Scene context">
       <header className="home-v2-feature-identity">
         <button onClick={() => character && onCharacter(character.id)} aria-label={character ? `Open ${character.name}` : "Open character"}>
-          <img src={character?.portraitUrl ?? "/fixtures/char-nova-portrait.svg"} alt="" />
+          <LibraryCharacterPortrait src={character?.portraitUrl ?? ""} name={character?.name ?? ""} />
         </button>
         <div><button onClick={() => character && onCharacter(character.id)}>{character?.name ?? "Flex Scenes"}</button><small><HomeRelativeTime value={asset.createdAt} /></small></div>
         <button className="home-v2-feature-more" aria-label="Open Media Detail" onClick={() => onOpen(asset)}><UiIcon name="more" /></button>

@@ -6,6 +6,7 @@ import type { MobilePrimaryDestination } from "./mobile-route-chrome";
 import { UiIcon } from "@/components/ui-icon";
 import { MobileAppMenu } from "./mobile-app-menu";
 import { mobileCharacterAvatar } from "./mobile-character-avatar";
+import { LibraryCharacterPortrait } from "@/components/library-media-thumbnail";
 
 export function MobileTopBar({ view, character, characters, navigate, setCharacter, minimal = false, flow = false }: {
   view: string;
@@ -65,7 +66,7 @@ export function MobileTopBar({ view, character, characters, navigate, setCharact
         {searchAction && <button aria-label="Search characters and scenes" onClick={() => navigate("explore")}><UiIcon name="explore" /></button>}
         {showActivity && <button aria-label="Open Activity" onClick={() => navigate("jobs")}><UiIcon name="notification" /><i aria-hidden="true" /></button>}
         {showMessages && <button aria-label="Open Messages" onClick={() => navigate("messages")}><UiIcon name="messages" /></button>}
-        {character && <button className="mobile-top-character" aria-label={`Open ${character.name}`} onClick={() => navigate("character")}><img src={mobileCharacterAvatar(character.id, characters)} alt="" /></button>}
+        {character && <button className="mobile-top-character" aria-label={`Open ${character.name}`} onClick={() => navigate("character")}><LibraryCharacterPortrait src={mobileCharacterAvatar(character.id, characters)} name={character.name} /></button>}
       </div>
       </div>
       {open && <MobileAppMenu characters={characters} character={character} navigate={navigate} setCharacter={setCharacter} close={() => setOpen(false)} />}

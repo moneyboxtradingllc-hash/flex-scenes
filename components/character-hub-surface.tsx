@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { AppSnapshot, MediaAsset } from "@/lib/domain";
 import { LibraryCharacterPortrait, LibraryMediaThumbnail } from "@/components/library-media-thumbnail";
 
@@ -17,10 +17,11 @@ type PremiumCharacterHubProps = {
   onBack?: () => void;
   openMessages?: (characterId: string) => void;
   manageReferences?: () => void;
+  refresh?: () => Promise<void>;
 };
 
 export function PremiumCharacterHub(props: PremiumCharacterHubProps) {
-  const { data, character, select, create, go, onBack, openMessages, manageReferences } = props;
+  const { data, character, select, create, go, onBack, openMessages, manageReferences, refresh } = props;
   const [tab, setTab] = useState<Tab>("Grid");
   const [thumbnailStates, setThumbnailStates] = useState<Record<string, ThumbnailState>>({});
   const onThumbnailStateChange = useCallback((assetId: string, state: ThumbnailState) => {
@@ -72,11 +73,11 @@ export function PremiumCharacterHub(props: PremiumCharacterHubProps) {
       <div className="mt-5 flex border-b border-white/8">{(["Grid", "Videos", "References", "Collections"] as Tab[]).map((item) => <button key={item} onClick={() => setTab(item)} className={`px-4 pb-3 text-sm font-semibold ${tab === item ? "border-b-2 border-fuchsia-400 text-white" : "text-zinc-500"}`}>{item}</button>)}</div>
       {tab === "Collections" ? <div className="grid grid-cols-2 gap-3 py-5">{collections.map((collection) => <div key={collection.id} className="rounded-2xl bg-white/[.045] p-4"><b>{collection.name}</b><p className="mt-1 text-xs text-zinc-500">{collection.assets.length} scenes</p></div>)}</div> : <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4">{shown.map((asset) => <button key={asset.id} onClick={() => select(asset)} className="group relative overflow-hidden rounded-xl bg-white/5"><LibraryMediaThumbnail asset={asset} alt={asset.title} className="aspect-square w-full object-cover transition duration-200 group-hover:scale-[1.03]" />{asset.type === "video" && <span className="absolute bottom-1 right-1 rounded-full bg-black/70 px-1.5 py-0.5 text-[10px]">▶</span>}</button>)}</div>}
     </div>
-    <MobileCharacterHub character={character} images={images} videos={videos} refs={refs} tab={tab} setTab={setTab} shown={shown} collections={collections} select={select} create={create} go={go} onBack={onBack} openMessages={openMessages} manageReferences={manageReferences} onThumbnailStateChange={onThumbnailStateChange} />
+    <MobileCharacterHub character={character} images={images} videos={videos} refs={refs} tab={tab} setTab={setTab} shown={shown} collections={collections} select={select} create={create} go={go} onBack={onBack} openMessages={openMessages} manageReferences={manageReferences} onThumbnailStateChange={onThumbnailStateChange} refresh={refresh} />
   </>;
 }
 
-function MobileCharacterHub({ character, images, videos, refs, tab, setTab, shown, collections, select, create, go, onBack, openMessages, manageReferences, onThumbnailStateChange }: {
+function MobileCharacterHub({ character, images, videos, refs, tab, setTab, shown, collections, select, create, go, onBack, openMessages, manageReferences, onThumbnailStateChange, refresh }: {
   character: Character;
   images: MediaAsset[];
   videos: MediaAsset[];
@@ -92,7 +93,11 @@ function MobileCharacterHub({ character, images, videos, refs, tab, setTab, show
   openMessages?: (characterId: string) => void;
   manageReferences?: () => void;
   onThumbnailStateChange: (assetId: string, state: ThumbnailState) => void;
+  refresh?: () => Promise<void>;
 }) {
+  const portraitInput = useRef<HTMLInputElement>(null);
+  const [portraitUploading, setPortraitUploading] = useState(false);
+  const [portraitError, setPortraitError] = useState("");
   const [activeCollectionId, setActiveCollectionId] = useState("");
   const activeCollection = collections.find((item) => item.id === activeCollectionId);
   const selectTab = (next: Tab) => { setActiveCollectionId(""); setTab(next); };
@@ -100,7 +105,10 @@ function MobileCharacterHub({ character, images, videos, refs, tab, setTab, show
   return <div className="character-hub-mobile">
     <div className="character-mobile-top"><button onClick={onBack} aria-label="Back">‹</button><span aria-hidden="true" /><button onClick={() => go("settings")} aria-label="Character settings">⚙</button></div>
     <section className="character-mobile-profile">
-      <span className="character-mobile-portrait" data-seed-portrait={character.portraitUrl.startsWith("/fixtures/char-") || undefined}><LibraryCharacterPortrait src={character.portraitUrl} name={character.name} /></span>
+      <button type="button" className="character-mobile-portrait" onClick={() => portraitInput.current?.click()} aria-label="Change profile photo"><LibraryCharacterPortrait src={character.portraitUrl} name={character.name} /><span className="character-photo-edit-badge" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M3 6h3l1.2-2h5.6L14 6h3v10H3z"/><circle cx="10" cy="11" r="2.7"/></svg></span></button>
+      <input ref={portraitInput} type="file" accept="image/*" hidden onChange={async (event) => { const file = event.target.files?.[0]; event.target.value = ""; if (!file) return; setPortraitError(""); setPortraitUploading(true); try { const form = new FormData(); form.set("file", file); form.set("characterId", character.id); form.set("setAsPortrait", "true"); const response = await fetch("/api/media/upload", { method: "POST", body: form }); const value = await response.json(); if (!response.ok) throw new Error(value.error ?? "Photo upload failed."); await refresh?.(); } catch (error) { setPortraitError(error instanceof Error ? error.message : "Photo upload failed."); } finally { setPortraitUploading(false); } }} />
+      <button type="button" className="character-change-photo" onClick={() => portraitInput.current?.click()} disabled={portraitUploading}>{portraitUploading ? "Uploading…" : "Change Photo"}</button>
+      {portraitError && <small role="alert">{portraitError}</small>}
       <h1>{character.name}</h1>
       {profileCopy(character.description, character.personality) && <p>{profileCopy(character.description, character.personality)}</p>}
       <div className="character-mobile-actions"><button onClick={() => openMessages ? openMessages(character.id) : go("messages")}>Message</button><button onClick={() => create(undefined, undefined, character.id)}>Create Scene</button></div>

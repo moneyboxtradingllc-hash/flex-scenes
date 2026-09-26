@@ -3,6 +3,7 @@
 import type { AppSnapshot, MediaAsset } from "@/lib/domain";
 import { UiIcon } from "@/components/ui-icon";
 import { HomeRelativeTime } from "./home-relative-time";
+import { LibraryCharacterPortrait } from "@/components/library-media-thumbnail";
 
 export function HomeFeedPost({ asset, character, onOpen, onFavorite, onReference, onRemix, onCharacter, priority = false }: {
   asset: MediaAsset;
@@ -21,7 +22,7 @@ export function HomeFeedPost({ asset, character, onOpen, onFavorite, onReference
     <article className="home-v2-post">
       <header className="home-v2-post-header">
         <button className="home-v2-post-person" onClick={() => character && onCharacter(character.id)} aria-label={character ? `Open ${character.name}` : "Open character"}>
-          <span className="home-v2-avatar-ring"><img src={character?.portraitUrl ?? "/fixtures/char-nova-portrait.svg"} alt="" /></span>
+          <span className="home-v2-avatar-ring"><LibraryCharacterPortrait src={character?.portraitUrl ?? ""} name={character?.name ?? ""} /></span>
           <span><b>{character?.name ?? "Flex Scenes"}</b><HomeRelativeTime value={asset.createdAt} className="home-v2-time" /></span>
         </button>
         <button className="home-v2-icon-button" aria-label={`More about ${asset.title}`} onClick={() => onOpen(asset)}><UiIcon name="more" /></button>

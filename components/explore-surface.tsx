@@ -2,6 +2,7 @@
 
 import { useDeferredValue, useMemo, useState } from "react";
 import type { AppSnapshot, MediaAsset } from "@/lib/domain";
+import { LibraryCharacterPortrait } from "@/components/library-media-thumbnail";
 
 type Filter = "All" | "Images" | "Videos" | "Characters" | "Favorites" | "Collections";
 
@@ -89,7 +90,7 @@ export function PremiumExplore({
             const favorites = scenes.filter((asset) => asset.favorite).length;
             return <button key={character.id} className="explore-character-card" onClick={() => openCharacter(character.id)}>
               <span className="explore-character-cover">
-                <img src={character.portraitUrl} alt="" loading="lazy" />
+                <LibraryCharacterPortrait src={character.portraitUrl} name={character.name} />
                 {scenes[0] && <img className="explore-character-scene" src={scenes[0].posterUrl ?? scenes[0].url} alt="" loading="lazy" />}
                 <span className="explore-character-count">{scenes.length} {scenes.length === 1 ? "scene" : "scenes"}</span>
               </span>
@@ -121,12 +122,12 @@ export function PremiumExplore({
               {asset.type === "video" && <span className="explore-play-badge"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 6 10 6-10 6V6Z" /></svg></span>}
               {asset.favorite && <span className="explore-favorite-badge" aria-label="Favorite">♥</span>}
               {collectionNames && <span className="explore-collection-badge" aria-label="In a collection">▧</span>}
-              <span className="explore-tile-caption"><strong>{asset.title}</strong>{character && <span><img src={character.portraitUrl} alt="" loading="lazy" />{character.name}</span>}</span>
+              <span className="explore-tile-caption"><strong>{asset.title}</strong>{character && <span><LibraryCharacterPortrait src={character.portraitUrl} name={character.name} />{character.name}</span>}</span>
             </button>;
           })}</div>
         </section>}
 
-        {!hasResults && <div className="explore-empty"><div className="explore-empty-icon">⌕</div><h2>Nothing matches these filters yet.</h2><p>Try another search or clear your filters to see the full gallery.</p><div><button onClick={clearFilters}>Clear Filters</button>{data.media.length > 0 && <button className="explore-empty-secondary" onClick={() => create(data.media.find((asset) => asset.type === "image"), undefined, data.characters[0]?.id)}>Create Scene</button>}</div></div>}
+        {!hasResults && <div className="explore-empty"><div className="explore-empty-icon">⌕</div><h2>Nothing matches these filters yet.</h2><p>Try another search or clear your filters to see the full gallery.</p><div><button onClick={clearFilters}>Clear Filters</button>{data.media.length > 0 && <button className="explore-empty-secondary" onClick={() => create(data.media.find((asset) => asset.type === "image"))}>Create Scene</button>}</div></div>}
       </>}
     </section>
   );

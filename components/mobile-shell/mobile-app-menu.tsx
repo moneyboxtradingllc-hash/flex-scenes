@@ -5,6 +5,7 @@ import type { AppSnapshot } from "@/lib/domain";
 import type { MobilePrimaryDestination } from "./mobile-route-chrome";
 import { UiIcon } from "@/components/ui-icon";
 import { mobileCharacterAvatar } from "./mobile-character-avatar";
+import { LibraryCharacterPortrait } from "@/components/library-media-thumbnail";
 
 const entries: Array<[MobilePrimaryDestination, string, "home" | "messages" | "profile" | "collections" | "jobs"]> = [
   ["home", "Home", "home"],
@@ -26,14 +27,14 @@ export function MobileAppMenu({ characters, character, navigate, setCharacter, c
   return <section className="mobile-app-menu" id="mobile-app-menu" aria-label="Flex Scenes menu">
     {character && <div className="mobile-menu-active-character">
       <button className="mobile-menu-character-link" onClick={() => { close(); navigate("character"); }}>
-        <img src={mobileCharacterAvatar(character.id, characters)} alt="" />
+        <LibraryCharacterPortrait src={mobileCharacterAvatar(character.id, characters)} name={character.name} />
         <span><small>ACTIVE CHARACTER</small><b>{character.name}</b></span>
       </button>
       <button className="mobile-menu-switch" aria-expanded={switching} onClick={() => setSwitching((value) => !value)}>{switching ? "Done" : "Switch"}</button>
     </div>}
     {switching && <div className="mobile-menu-character-list" aria-label="Choose character">
       {characters.map((item) => <button key={item.id} aria-current={item.id === character?.id ? "true" : undefined} onClick={() => { setCharacter(item.id); close(); }}>
-        <img src={mobileCharacterAvatar(item.id, characters)} alt="" /><span>{item.name}</span>{item.id === character?.id && <span className="mobile-menu-check" aria-hidden="true">✓</span>}
+        <LibraryCharacterPortrait src={mobileCharacterAvatar(item.id, characters)} name={item.name} /><span>{item.name}</span>{item.id === character?.id && <span className="mobile-menu-check" aria-hidden="true">✓</span>}
       </button>)}
     </div>}
     <nav aria-label="Application menu">

@@ -250,11 +250,7 @@ export function PremiumMessages({
           >
             ←
           </button>
-          <img
-            src={character?.portraitUrl}
-            alt=""
-            className="h-10 w-10 rounded-full object-cover ring-2 ring-fuchsia-400/50"
-          />
+          <span className="h-10 w-10 overflow-hidden rounded-full ring-2 ring-fuchsia-400/50"><LibraryCharacterPortrait src={character?.portraitUrl ?? ""} name={character?.name ?? "Character"} /></span>
           <div className="min-w-0 flex-1">
             <b className="block text-sm">{character?.name}</b>
             <small className="block truncate text-xs text-zinc-500">
@@ -324,11 +320,7 @@ export function PremiumMessages({
                   className={`flex gap-2 ${message.role === "user" ? "justify-end" : "justify-start"}`}
                 >
                   {message.role === "character" && (
-                    <img
-                      src={character?.portraitUrl}
-                      alt=""
-                      className="mt-auto h-7 w-7 rounded-full object-cover"
-                    />
+                    <span className="mt-auto h-7 w-7 shrink-0 overflow-hidden rounded-full"><LibraryCharacterPortrait src={character?.portraitUrl ?? ""} name={character?.name ?? "Character"} /></span>
                   )}
                   <div
                     className={`max-w-[82%] rounded-2xl px-3 py-2.5 text-sm leading-relaxed ${message.role === "user" ? "rounded-br-md bg-gradient-to-r from-fuchsia-500 to-pink-500 text-white" : "rounded-bl-md bg-white/[.075] text-zinc-200"}`}

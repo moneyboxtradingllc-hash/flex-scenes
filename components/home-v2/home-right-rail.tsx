@@ -3,6 +3,7 @@
 import type { HomeActions } from "./home-v2";
 import { UiIcon } from "@/components/ui-icon";
 import { HomeRelativeTime } from "./home-relative-time";
+import { LibraryCharacterPortrait } from "@/components/library-media-thumbnail";
 
 export function HomeRightRail({ data, character, navigate, openConversation, select }: Pick<HomeActions, "data" | "character" | "navigate" | "openConversation" | "select">) {
   const characterMedia = data.media.filter((asset) => asset.characterId === character?.id);
@@ -19,13 +20,13 @@ export function HomeRightRail({ data, character, navigate, openConversation, sel
       <div className="home-v2-top-actions">
         <button aria-label="Search characters and scenes" onClick={() => navigate("explore")}><UiIcon name="explore" /></button>
         <button aria-label="Open activity" onClick={() => navigate("jobs")}><UiIcon name="notification" /></button>
-        {character && <button className="home-v2-user-avatar" aria-label={`Open ${character.name}`} onClick={() => navigate("character")}><img src={character.portraitUrl} alt="" /></button>}
+        {character && <button className="home-v2-user-avatar" aria-label={`Open ${character.name}`} onClick={() => navigate("character")}><LibraryCharacterPortrait src={character.portraitUrl} name={character.name} /></button>}
       </div>
 
       {character && <section className="home-v2-character-section" aria-label="Active character">
         <div className="home-v2-character-card">
           <button className="home-v2-character-identity" onClick={() => navigate("character")}>
-            <img src={character.portraitUrl} alt={`${character.name} portrait`} />
+            <LibraryCharacterPortrait src={character.portraitUrl} name={character.name} />
           <span><b>{character.name}</b><small>{character.handle}</small><p className="home-v2-character-bio">{character.description}</p></span>
           </button>
         <div className="home-v2-character-stats" aria-label={`${characterMedia.length} scenes, ${images} images, ${videos} videos`}>
@@ -58,7 +59,7 @@ export function HomeRightRail({ data, character, navigate, openConversation, sel
             const last = data.messages.filter((message) => message.conversationId === conversation.id).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0];
             if (!person) return null;
             return <button key={conversation.id} className="home-v2-message-row" onClick={() => openConversation(conversation.id)}>
-              <img src={person.portraitUrl} alt="" loading="lazy" />
+              <LibraryCharacterPortrait src={person.portraitUrl} name={person.name} />
               <span><b>{person.name.split(" ")[0]}</b><small>{last?.body ?? "Open conversation"}</small></span>
               <HomeRelativeTime value={conversation.updatedAt} className="home-v2-time" />
               {conversation.unread && <i aria-label="Unread" />}

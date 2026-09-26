@@ -163,8 +163,11 @@ input::placeholder,textarea::placeholder { color:rgba(228,226,234,.42); }
  .character-mobile-top button{display:grid;width:44px;height:44px;place-items:center;border:0;border-radius:50%;background:transparent;color:#f7f5f8;font-size:23px}
  .character-mobile-profile{display:grid;justify-items:center;padding:1px 18px 10px;text-align:center}
  .character-mobile-portrait{position:relative;width:104px;height:104px;overflow:hidden;border:2px solid transparent;border-radius:50%;background:linear-gradient(#060609,#060609) padding-box,linear-gradient(135deg,#ffb05d,#ff2d88,#843cff) border-box;padding:3px}
+ .character-mobile-portrait{display:block;cursor:pointer}
  .character-mobile-portrait img,.character-mobile-portrait .library-character-portrait-fallback{display:grid;width:100%;height:100%;place-items:center;border-radius:50%;object-fit:cover;transform:none}
- .character-mobile-portrait[data-seed-portrait="true"]::after{position:absolute;inset:70% 0 0;border-radius:0 0 50% 50%;background:linear-gradient(transparent,#060609 18%);content:"";pointer-events:none}
+ .character-photo-edit-badge{position:absolute;right:0;bottom:2px;display:grid;width:28px;height:28px;place-items:center;border:2px solid #060609;border-radius:50%;background:#ff2d7a;font-size:13px}
+ .character-photo-edit-badge svg{width:15px;height:15px;fill:none;stroke:#fff;stroke-linecap:round;stroke-linejoin:round;stroke-width:1.5}
+ .character-change-photo{margin-top:5px;padding:4px 10px;border:1px solid #ffffff20;border-radius:999px;background:#111116;color:#e9e6ed;font-size:11px}
  .character-mobile-profile h1{margin:7px 0 0;font-size:25px;font-weight:760;letter-spacing:-.045em}
  .character-mobile-profile>p{display:-webkit-box;max-width:360px;overflow:hidden;margin:3px 0 0;color:#a8a4af;font-size:12px;line-height:1.35;-webkit-line-clamp:2;-webkit-box-orient:vertical}
  .character-mobile-actions{display:grid;width:min(360px,100%);grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}

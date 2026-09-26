@@ -1,7 +1,7 @@
 // This dense presentational client surface is covered by domain/service tests; UI action types are intentionally permissive.
 // @ts-nocheck
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AppSnapshot,
   GenerationInput,
@@ -21,7 +21,7 @@ import { GenerationProgress } from "@/components/generation-surfaces";
 import { UiIcon } from "@/components/ui-icon";
 import { MobileAppShell } from "@/components/mobile-shell/mobile-app-shell";
 import { ReferenceVault } from "@/components/reference-vault";
-import { LibraryMediaThumbnail } from "@/components/library-media-thumbnail";
+import { LibraryCharacterPortrait, LibraryMediaThumbnail } from "@/components/library-media-thumbnail";
 
 type View =
   | "home"
@@ -84,20 +84,36 @@ export function StudioApp({
   );
   const previousView = useRef<View>("home");
   const routedCharacterId = initialCharacterId ?? route.split("/")[2];
-  const defaultVaultCharacter = route.startsWith("character/references")
-    ? initial.characters.find((item) => item.name.trim().toLocaleLowerCase() === "valeria")
-    : undefined;
-  const [activeCharacter, setActiveCharacter] = useState(
-    initial.characters.find((item) => item.id === routedCharacterId)?.id ?? defaultVaultCharacter?.id ?? initial.characters[0]?.id,
-  );
+  const routedCharacter = initial.characters.find((item) => item.id === routedCharacterId);
+  const validRoutedCharacterId = routedCharacter?.id;
+  const [activeCharacter, setActiveCharacter] = useState<string | undefined>(routedCharacter?.id);
+  const [characterSelectionReady, setCharacterSelectionReady] = useState(Boolean(routedCharacter));
   const activeCharacterIdRef = useRef(activeCharacter);
   const selectCharacter = (characterId: string) => {
     activeCharacterIdRef.current = characterId;
     setActiveCharacter(characterId);
+    window.localStorage.setItem("flex-scenes.active-character-id", characterId);
     const currentUrl = new URL(window.location.href);
     currentUrl.searchParams.set("characterId", characterId);
     window.history.replaceState({}, "", `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`);
   };
+  useEffect(() => {
+    if (validRoutedCharacterId) {
+      window.localStorage.setItem("flex-scenes.active-character-id", validRoutedCharacterId);
+      activeCharacterIdRef.current = validRoutedCharacterId;
+      startTransition(() => setCharacterSelectionReady(true));
+      return;
+    }
+    const stored = window.localStorage.getItem("flex-scenes.active-character-id");
+    const validStored = data.characters.some((item) => item.id === stored) ? stored : undefined;
+    const onlyCharacter = data.characters.length === 1 ? data.characters[0].id : undefined;
+    const selected = validStored ?? onlyCharacter;
+    activeCharacterIdRef.current = selected;
+    startTransition(() => {
+      setActiveCharacter(selected);
+      setCharacterSelectionReady(true);
+    });
+  }, [data.characters, validRoutedCharacterId]);
   const referenceVaultReturnView = useRef<View>("character");
   const [selected, setSelected] = useState<MediaAsset | null>(null);
   const [mobileThreadActive, setMobileThreadActive] = useState(false);
@@ -189,8 +205,7 @@ export function StudioApp({
     else { setTargetConversationId(""); setMessagesEntryPage("list"); }
     go("messages");
   };
-  const active =
-    data.characters.find((c) => c.id === activeCharacter) ?? data.characters[0];
+  const active = data.characters.find((c) => c.id === activeCharacter);
   const isWideArchive = view === "explore" || view === "library" || view === "reference-vault";
   const favorite = async (id: string) => {
     await fetch("/api/actions", {
@@ -318,14 +333,14 @@ export function StudioApp({
       <section className="min-w-0 border-x border-white/5">
         {view !== "reference-vault" && header}
         <div className={`studio-page-content mx-auto w-full ${view === "home" ? "home-page-content" : ""} ${view === "reels" ? "mobile-reels-page-content" : ""} ${view === "library" ? "mobile-library-page-content" : ""} ${isWideArchive ? "max-w-none" : "max-w-[900px]"} p-4 md:p-7`}>
-          {view === "reference-vault" && active && <ReferenceVault data={data} character={active} refresh={refresh} select={setSelected} back={() => go(referenceVaultReturnView.current)} onCharacterChange={(id) => { selectCharacter(id); }} createCharacter={async (name, description) => { const response = await fetch("/api/actions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "character-create", name, description }) }); const created = await json<AppSnapshot["characters"][number]>(response); await refresh(); selectCharacter(created.id); return created; }} createWithReferences={(characterId, ids, roles) => { selectCharacter(characterId); go("create", { characterId, referenceAssetIds: ids, referenceAssetRoles: roles }); }} />}
+          {view === "reference-vault" && (active ? <ReferenceVault data={data} character={active} refresh={refresh} select={setSelected} back={() => go(referenceVaultReturnView.current)} onCharacterChange={(id) => { selectCharacter(id); }} createCharacter={async (name, description) => { const response = await fetch("/api/actions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "character-create", name, description }) }); const created = await json<AppSnapshot["characters"][number]>(response); await refresh(); selectCharacter(created.id); return created; }} createWithReferences={(characterId, ids, roles) => { selectCharacter(characterId); go("create", { characterId, referenceAssetIds: ids, referenceAssetRoles: roles }); }} /> : characterSelectionReady ? <CharacterChooser characters={data.characters} onSelect={selectCharacter} refresh={refresh} /> : <p>Loading characters…</p>)}
           {view === "explore" && <PremiumExplore data={data} select={setSelected} openCharacter={(id) => { selectCharacter(id); go("character"); }} create={createFrom} />}{" "}
           {view === "create" && (
-            <CapabilityCreate
+            active ? <CapabilityCreate
               data={data}
-              context={createContext}
+              context={{ ...createContext, characterId: createContext.characterId ?? active.id }}
               onJobCreated={openJob}
-            />
+            /> : characterSelectionReady ? <CharacterChooser characters={data.characters} onSelect={selectCharacter} refresh={refresh} /> : <p>Loading characters…</p>
           )}{" "}
           {(view === "progress" || view === "result") && <GenerationProgress data={data} job={data.jobs.find((item) => item.id === selectedJobId)} connectionError={jobConnectionError} refresh={refresh} openJob={openJob} browse={() => go("explore")} jobs={() => go("jobs")} edit={(job) => { const parent = job.parentMediaId ? data.media.find((item) => item.id === job.parentMediaId) : undefined; let settings: Record<string, unknown> = {}; try { settings = JSON.parse(job.settingsJson); } catch {} go("create", { parent, conversationId: job.conversationId ?? undefined, characterId: job.characterId, mode: job.mode, prompt: job.prompt, ratio: typeof settings.aspectRatio === "string" ? settings.aspectRatio : undefined, duration: typeof settings.duration === "number" ? settings.duration : undefined, referenceAssetIds: Array.isArray(settings.referenceAssetIds) ? settings.referenceAssetIds : undefined }); }} conversation={openConversation} createResult={(media, mode) => createFrom(media, data.jobs.find((item) => item.id === selectedJobId)?.conversationId ?? undefined, media.characterId, mode)} select={setSelected} />}{" "}
           {view === "reels" && (
@@ -342,6 +357,7 @@ export function StudioApp({
                 else { selectCharacter(characterId); go("messages"); }
               }}
               openCharacter={(id) => { selectCharacter(id); go("character"); }}
+              qaCharacterId={active?.id}
             />
           )}{" "}
           {view === "messages" && (
@@ -358,7 +374,7 @@ export function StudioApp({
           )}{" "}
           {view === "library" && <PremiumLibrary data={data} select={setSelected} refresh={refresh} create={createFrom} />}{" "}
           {view === "character" && (
-            <CharacterHub
+            active ? <CharacterHub
               data={data}
               character={active}
               select={setSelected}
@@ -374,16 +390,17 @@ export function StudioApp({
               }}
               openMessages={messageCharacter}
               manageReferences={() => openReferenceVault("character")}
-            />
+              refresh={refresh}
+            /> : characterSelectionReady ? <CharacterChooser characters={data.characters} onSelect={selectCharacter} refresh={refresh} /> : <p>Loading characters…</p>
           )}{" "}
           {view === "settings" && (
-          <CharacterSettings
+          active ? <CharacterSettings
             data={data}
             character={active}
             refresh={refresh}
             go={go}
             onManageReferences={() => openReferenceVault("settings")}
-          />
+          /> : characterSelectionReady ? <CharacterChooser characters={data.characters} onSelect={selectCharacter} refresh={refresh} /> : <p>Loading characters…</p>
           )}{" "}
           {view === "jobs" && (
             <JobCenter data={data} select={setSelected} refresh={refresh} openJob={openJob} />
@@ -472,7 +489,7 @@ function ContextRail({
             view === "home" ? (
               <div className="home-character-card">
                 <button onClick={() => go("character")} className="home-character-identity">
-                  <img src={character.portraitUrl} alt={`${character.name} portrait`} />
+                  <LibraryCharacterPortrait src={character.portraitUrl} name={character.name} />
                   <span><b>{character.name}</b><small>{character.handle}</small></span>
                 </button>
                 <p>{character.description}</p>
@@ -489,7 +506,7 @@ function ContextRail({
               </div>
             ) : (
               <button onClick={() => go("character")} className="mt-3 flex w-full items-center gap-3 text-left">
-                <img src={character.portraitUrl} alt="" className="h-12 w-12 rounded-full ring-2 ring-fuchsia-400/70 ring-offset-2 ring-offset-[#0a0c10]" />
+                <span className="h-12 w-12 overflow-hidden rounded-full ring-2 ring-fuchsia-400/70 ring-offset-2 ring-offset-[#0a0c10]"><LibraryCharacterPortrait src={character.portraitUrl} name={character.name} /></span>
                 <span><b className="block text-sm">{character.name}</b><small className="text-zinc-500">{character.handle}</small></span>
               </button>
             )
@@ -536,7 +553,7 @@ function ContextRail({
                 if (!person) return null;
                 return (
                   <button className="home-recent-message" key={conversation.id} onClick={() => openConversation(conversation.id)}>
-                    <img src={person.portraitUrl} alt="" />
+                    <LibraryCharacterPortrait src={person.portraitUrl} name={person.name} />
                     <span><b>{person.name}</b><small>{lastMessage?.body ?? "Open conversation"}</small></span>
                     {conversation.unread && <i aria-label="Unread message" />}
                   </button>
@@ -741,7 +758,7 @@ function Create({
 }) {
   const [mode, setMode] = useState<"image" | "video">("image");
   const [characterId, setCharacterId] = useState(
-    context.characterId ?? data.characters[0]?.id,
+    context.characterId,
   );
   const [prompt, setPrompt] = useState(
     context.parent ? `Remix: ${context.parent.prompt}` : "",
@@ -964,7 +981,7 @@ function LegacyCapabilityCreate({
 }) {
   const [mode, setMode] = useState<"image" | "video">(context.mode ?? "image");
   const [characterId, setCharacterId] = useState(
-    context.characterId ?? data.characters[0]?.id,
+    context.characterId,
   );
   const [prompt, setPrompt] = useState(
     context.parent && context.mode !== "video"
@@ -1503,11 +1520,7 @@ function LegacyEnhancedMessages({
               onClick={() => setActive(c.id)}
               className={`flex w-full gap-3 rounded-2xl p-3 text-left ${active === c.id ? "bg-white/8" : ""}`}
             >
-              <img
-                src={ch?.portraitUrl}
-                className="h-11 w-11 rounded-full"
-                alt=""
-              />
+              <span className="h-11 w-11 overflow-hidden rounded-full"><LibraryCharacterPortrait src={ch?.portraitUrl ?? ""} name={ch?.name ?? ""} /></span>
               <span>
                 <b className="block">{ch?.name}</b>
                 <small className="text-zinc-500">
@@ -1588,6 +1601,20 @@ function LegacyEnhancedMessages({
     </div>
   );
 }
+function CharacterChooser({ characters, onSelect, refresh }: { characters: AppSnapshot["characters"]; onSelect: (id: string) => void; refresh: () => Promise<void> }) {
+  const [name, setName] = useState("");
+  const [error, setError] = useState("");
+  const create = async () => {
+    if (!name.trim()) return;
+    const response = await fetch("/api/actions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "character-create", name: name.trim(), description: "" }) });
+    const value = await response.json();
+    if (!response.ok) { setError(value.error ?? "Could not create character."); return; }
+    await refresh();
+    onSelect(value.id);
+  };
+  return <section className="mx-auto max-w-xl p-5" aria-label="Choose a character"><h1 className="text-2xl font-bold">{characters.length ? "Choose a Character" : "Create Character"}</h1><p className="mt-2 text-sm text-zinc-400">Select the character you are working with.</p>{characters.length > 0 && <div className="mt-5 grid gap-2">{characters.map((character) => <button key={character.id} onClick={() => onSelect(character.id)} className="flex min-h-14 items-center gap-3 rounded-xl border border-white/10 p-3 text-left"><span className="h-10 w-10 overflow-hidden rounded-full"><LibraryCharacterPortrait src={character.portraitUrl} name={character.name} /></span><span className="font-semibold">{character.name}</span></button>)}</div>}{characters.length === 0 && <div className="mt-5 flex gap-2"><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Character name" className="min-h-11 min-w-0 flex-1 rounded-xl bg-white/5 px-3"/><button onClick={() => void create()} className="rounded-xl bg-fuchsia-500 px-4">Create</button></div>}{error && <p role="alert">{error}</p>}</section>;
+}
+
 function CharacterHub({
   data,
   character,
@@ -1596,6 +1623,7 @@ function CharacterHub({
   go,
   onBack,
   openMessages,
+  refresh,
 }: {
   data: AppSnapshot;
   character?: AppSnapshot["characters"][number];
@@ -1608,6 +1636,7 @@ function CharacterHub({
   go: (x: View) => void;
   onBack?: () => void;
   openMessages?: (characterId: string) => void;
+  refresh?: () => Promise<void>;
 }) {
   return (
     <PremiumCharacterHub
@@ -1618,6 +1647,7 @@ function CharacterHub({
       go={go}
       onBack={onBack}
       openMessages={openMessages}
+      refresh={refresh}
     />
   );
 }
@@ -1666,11 +1696,7 @@ function Messages({
               onClick={() => setActive(c.id)}
               className={`flex w-full gap-3 rounded-2xl p-3 text-left ${active === c.id ? "bg-white/8" : ""}`}
             >
-              <img
-                src={ch?.portraitUrl}
-                className="h-11 w-11 rounded-full"
-                alt=""
-              />
+              <span className="h-11 w-11 overflow-hidden rounded-full"><LibraryCharacterPortrait src={ch?.portraitUrl ?? ""} name={ch?.name ?? ""} /></span>
               <span className="min-w-0">
                 <b className="block">{ch?.name}</b>
                 <small className="block truncate text-zinc-500">

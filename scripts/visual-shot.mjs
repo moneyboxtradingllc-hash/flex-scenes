@@ -225,9 +225,8 @@ try {
       await Promise.all(images.map((image) => image.decode().catch(() => undefined)));
       return images.map((image) => ({ src: image.currentSrc, complete: image.complete, width: image.naturalWidth }));
     });
-    const brokenStoryImages = storyImages.filter((image) => !image.complete || image.width === 0 || !image.src.startsWith(`${baseOrigin}/fixtures/story-avatar-`));
-    if (brokenStoryImages.length) throw new Error(`Broken or non-local mobile story avatars at ${width}px: ${JSON.stringify(brokenStoryImages)}`);
-    if ((process.argv.includes("--mobile-home") || process.argv.includes("--mobile-v3")) && storyImages.length !== 7) throw new Error(`Expected seven loaded avatar portraits in the development story rail at ${width}px, got ${storyImages.length}`);
+    const brokenStoryImages = storyImages.filter((image) => !image.complete || image.width === 0);
+    if (brokenStoryImages.length) throw new Error(`Broken mobile character portraits at ${width}px: ${JSON.stringify(brokenStoryImages)}`);
     const storyLabels = await page.locator(".home-v2-mobile .home-v2-story > span:last-child").allTextContents();
     if (storyLabels.some((label) => /demo|fixture|\bid\b/i.test(label))) throw new Error(`Development terminology leaked into story labels at ${width}px: ${storyLabels.join(", ")}`);
     const clippedStoryLabels = await page.locator(".home-v2-mobile .home-v2-story > span:last-child").evaluateAll((nodes) => nodes.filter((node) => node.scrollWidth > node.clientWidth + 1).map((node) => node.textContent));

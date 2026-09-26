@@ -1,6 +1,7 @@
 "use client";
 
 import { UiIcon } from "@/components/ui-icon";
+import { LibraryCharacterPortrait } from "@/components/library-media-thumbnail";
 import type { HomeActions, HomeDestination } from "./home-v2";
 
 const mainItems: Array<[HomeDestination, string]> = [
@@ -16,7 +17,7 @@ export function HomeLeftNav({ data, character, navigate }: Pick<HomeActions, "da
     <aside className="home-v2-left-nav" aria-label="Application navigation">
       <button className="home-v2-brand" onClick={() => navigate("home")} aria-label="Flex Scenes home"><span>FLEX</span><span>SCENES</span></button>
       {character && <section className="home-v2-left-character" aria-label="Active character">
-        <button className="home-v2-left-character-portrait" onClick={() => navigate("character")} aria-label={`Open ${character.name}`}><img src={character.portraitUrl} alt="" /></button>
+        <button className="home-v2-left-character-portrait" onClick={() => navigate("character")} aria-label={`Open ${character.name}`}><LibraryCharacterPortrait src={character.portraitUrl} name={character.name} /></button>
         <button className="home-v2-left-character-name" onClick={() => navigate("character")}><b>{character.name}</b><span>{character.handle}</span></button>
         <p>{character.description}</p>
         <div className="home-v2-left-stats"><span><b>{related.length}</b><small>Scenes</small></span><span><b>{images}</b><small>Images</small></span><span><b>{videos}</b><small>Videos</small></span></div>

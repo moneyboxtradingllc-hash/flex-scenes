@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { RefObject } from "react";
 import type { AppSnapshot, MediaAsset } from "@/lib/domain";
+import { LibraryCharacterPortrait } from "@/components/library-media-thumbnail";
 
 type Filter = "all" | "favorites" | "recent" | "character";
 const filterLabels: Record<Filter, string> = { all: "All Videos", favorites: "Favorites", recent: "Recent", character: "Character" };
@@ -37,6 +38,7 @@ export function PremiumReels({
   onBack,
   openCharacterConversation,
   openCharacter,
+  qaCharacterId,
 }: {
   data: AppSnapshot;
   select: (asset: MediaAsset) => void;
@@ -46,6 +48,7 @@ export function PremiumReels({
   onBack: () => void;
   openCharacterConversation: (characterId: string) => void;
   openCharacter: (id: string) => void;
+  qaCharacterId?: string;
 }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [characterId, setCharacterId] = useState("");
@@ -70,7 +73,7 @@ export function PremiumReels({
   const activeSlideRef = useRef(0);
   const touchY = useRef<number | null>(null);
   const qaReelAssets = useMemo<MediaAsset[]>(() => {
-    const characterId = data.characters[0]?.id;
+    const characterId = qaCharacterId;
     if (!qaPlaybackEnabled || !characterId) return [];
     return [1, 2].map((take) => ({
       id: `dev-qa-reel-${take}`,
@@ -88,7 +91,7 @@ export function PremiumReels({
       createdAt: "2026-01-01T00:00:00.000Z",
       favorite: false,
     }));
-  }, [data.characters, qaPlaybackEnabled]);
+  }, [qaCharacterId, qaPlaybackEnabled]);
   const reelMedia = useMemo(() => qaPlaybackEnabled ? qaReelAssets : data.media, [data.media, qaPlaybackEnabled, qaReelAssets]);
   const videos = useMemo(() => {
     const filtered = reelMedia.filter((asset) => asset.type === "video" &&
@@ -392,7 +395,7 @@ export function PremiumReels({
                 <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-black/55 to-transparent pointer-events-none" />
                 <div className="absolute inset-x-0 bottom-0 h-56 bg-gradient-to-t from-black/85 via-black/25 to-transparent pointer-events-none" />
                 <div className="absolute inset-x-0 bottom-0 z-10 px-5 pb-6 pt-20 sm:px-7">
-                  <div className="flex items-end gap-3 pr-14"><img src={character?.portraitUrl || "/fixtures/char-iona-portrait.svg"} alt="" className="h-11 w-11 shrink-0 rounded-full border border-white/40 object-cover shadow-lg" /><div className="min-w-0"><p className="truncate text-sm font-semibold text-white">{character?.name ?? "A character"}</p>{character?.handle && <p className="text-[11px] text-white/60">{character.handle}</p>}</div></div>
+                  <div className="flex items-end gap-3 pr-14"><span className="h-11 w-11 shrink-0 overflow-hidden rounded-full border border-white/40 shadow-lg"><LibraryCharacterPortrait src={character?.portraitUrl ?? ""} name={character?.name ?? ""} /></span><div className="min-w-0"><p className="truncate text-sm font-semibold text-white">{character?.name ?? "A character"}</p>{character?.handle && <p className="text-[11px] text-white/60">{character.handle}</p>}</div></div>
                   <p className="mt-3 max-w-[34rem] pr-14 text-sm leading-5 text-white/90">{item.caption || item.title}</p>
                   {parent && <p className="mt-2 text-[10px] text-white/55">Scene from {parent.title}</p>}
                   {!loaded && <p className="mt-2 text-[10px] text-white/50">Loading video…</p>}
@@ -401,7 +404,7 @@ export function PremiumReels({
               </> : <>
                 <img src={item.posterUrl ?? item.url} alt={item.title} className="absolute inset-0 h-full w-full object-contain" loading="eager" />
                 <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-black/35 to-transparent" />
-                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent px-5 pb-6 pt-32 sm:px-7"><div className="flex items-end gap-3"><img src={character?.portraitUrl || "/fixtures/char-iona-portrait.svg"} alt="" className="h-11 w-11 rounded-full border border-white/40 object-cover" /><div><p className="text-sm font-semibold">{character?.name ?? "A character"}</p><p className="mt-1 text-sm text-white/85">{item.caption || item.title}</p></div></div><p className="mt-3 text-[10px] font-medium uppercase tracking-[.15em] text-white/55">Preview · no playable video attached</p></div>
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent px-5 pb-6 pt-32 sm:px-7"><div className="flex items-end gap-3"><span className="h-11 w-11 overflow-hidden rounded-full border border-white/40"><LibraryCharacterPortrait src={character?.portraitUrl ?? ""} name={character?.name ?? ""} /></span><div><p className="text-sm font-semibold">{character?.name ?? "A character"}</p><p className="mt-1 text-sm text-white/85">{item.caption || item.title}</p></div></div><p className="mt-3 text-[10px] font-medium uppercase tracking-[.15em] text-white/55">Preview · no playable video attached</p></div>
               </>}
               <div className="absolute right-3 top-3 z-10 rounded-full border border-white/15 bg-black/35 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[.12em] text-white/75">{playable ? "Video" : "Preview"}</div>
             </div>
@@ -418,7 +421,7 @@ export function PremiumReels({
 
         <aside className="reels-context hidden lg:flex lg:flex-col lg:gap-5">
           <div className="flex flex-col gap-2 border-b border-white/[.08] pb-5"><ActionButton label={item.favorite ? "Remove favorite" : "Favorite"} icon="heart" active={item.favorite} onClick={() => favorite(item.id)} horizontal /><ActionButton label="Notes" icon="note" onClick={() => select(item)} horizontal /><ActionButton label={playable ? "Remix video" : "Create from preview"} icon="remix" primary onClick={() => create(item, job?.conversationId ?? undefined, item.characterId, "video")} horizontal /><ActionButton label="Use as reference" icon="reference" active={item.isReference} onClick={() => reference(item.id)} horizontal /><ActionButton label="More" icon="more" onClick={() => setMoreOpen(true)} horizontal /></div>
-          <div><div className="mb-3 flex items-center justify-between"><p className="text-[10px] font-bold uppercase tracking-[.18em] text-zinc-500">In this scene</p>{character && <span className="text-[10px] text-zinc-600">Character</span>}</div>{character ? <div className="flex items-center gap-3"><img src={character.portraitUrl} alt="" className="h-10 w-10 rounded-full object-cover" /><div className="min-w-0"><p className="truncate text-sm font-medium">{character.name}</p><p className="truncate text-xs text-zinc-500">{character.handle}</p></div></div> : <p className="text-xs text-zinc-500">No character linked</p>}</div>
+          <div><div className="mb-3 flex items-center justify-between"><p className="text-[10px] font-bold uppercase tracking-[.18em] text-zinc-500">In this scene</p>{character && <span className="text-[10px] text-zinc-600">Character</span>}</div>{character ? <div className="flex items-center gap-3"><span className="h-10 w-10 overflow-hidden rounded-full"><LibraryCharacterPortrait src={character.portraitUrl} name={character.name} /></span><div className="min-w-0"><p className="truncate text-sm font-medium">{character.name}</p><p className="truncate text-xs text-zinc-500">{character.handle}</p></div></div> : <p className="text-xs text-zinc-500">No character linked</p>}</div>
           {parent && <div><p className="mb-2 text-[10px] font-bold uppercase tracking-[.18em] text-zinc-500">Lineage</p><button onClick={() => select(parent)} className="flex w-full items-center gap-3 rounded-xl border border-white/[.07] p-2 text-left hover:bg-white/[.04]"><img src={parent.posterUrl ?? parent.url} alt="" className="h-12 w-9 rounded-md object-cover" /><span className="min-w-0"><span className="block text-xs text-zinc-300">From image</span><span className="block truncate text-[10px] text-zinc-500">{parent.title}</span></span></button></div>}
           <div><p className="mb-3 text-[10px] font-bold uppercase tracking-[.18em] text-zinc-500">Related scenes</p><div className="grid grid-cols-4 gap-2">{nearScenes.map((asset) => <button key={asset.id} onClick={() => select(asset)} className="overflow-hidden rounded-lg focus-visible:outline" aria-label={`Open ${asset.title}`}><img src={asset.posterUrl ?? asset.url} alt="" className="aspect-[3/4] w-full object-cover" loading="lazy" /></button>)}</div></div>
           {collectionStatus && <p className="text-xs text-emerald-300" role="status">{collectionStatus}</p>}
@@ -491,7 +494,7 @@ function MobileReelSlide({ asset, index, active, playable, playing, loaded, ende
 
       <div className="reels-mobile-identity">
         <button className="reels-mobile-character" onClick={onOpenCharacter} aria-label={character ? `Open ${character.name} Character Hub` : "Character unavailable"} disabled={!character}>
-          <img src={character?.portraitUrl || "/fixtures/char-iona-portrait.svg"} alt="" loading={active ? "eager" : "lazy"} />
+          <LibraryCharacterPortrait src={character?.portraitUrl ?? ""} name={character?.name ?? ""} />
           <span>{character?.name ?? "A character"}</span>
         </button>
         {caption && <p className={captionExpanded ? "is-expanded" : ""}>{caption}</p>}

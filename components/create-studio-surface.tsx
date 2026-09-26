@@ -17,7 +17,7 @@ function ratioShape(ratio: string) {
 }
 export function PremiumCreateStudio({ data, context, onJobCreated }: { data: AppSnapshot; context: CreateContext; onJobCreated: (job: GenerationJob) => void }) {
   const [mode, setMode] = useState<"image" | "video">(context.mode ?? "image");
-  const [characterId, setCharacterId] = useState(context.characterId ?? data.characters[0]?.id);
+  const [characterId, setCharacterId] = useState(context.characterId);
   const [prompt, setPrompt] = useState(context.prompt ?? (context.parent ? `Remix: ${context.parent.prompt}` : ""));
   const [ratio, setRatio] = useState(context.ratio ?? "4:5");
   const [duration, setDuration] = useState(context.duration ?? 5);
@@ -61,7 +61,7 @@ export function PremiumCreateStudio({ data, context, onJobCreated }: { data: App
   };
   const setDefaults = (enabled: boolean) => { setUseDefaults(enabled); };
   const generate = async () => {
-    if (!capabilities || !prompt.trim()) return;
+    if (!characterId || !capabilities || !prompt.trim()) return;
     const referenceAssetRoles = Object.fromEntries(effectiveRefs.map((id) => [id, context.referenceAssetRoles?.[id] ?? canonicalPack.roles[id] ?? data.characterReferences.find((item) => item.characterId === characterId && item.mediaId === id)?.role ?? (data.media.find((asset) => asset.id === id)?.type === "video" ? "motion" : "other")]));
     const input: GenerationInput = { characterId, mode, prompt, aspectRatio: ratio, preset: mode === "image" ? "Hero" : `${duration} seconds`, count: mode === "image" ? 1 : undefined, duration: mode === "video" ? duration : undefined, simulation: "success", referenceAssetIds: effectiveRefs, referenceAssetRoles, proposalId: context.proposalId ?? null, sceneContext, parentMediaId: context.parent?.id ?? null, conversationId: context.conversationId ?? null };
     const response = await fetch("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) });

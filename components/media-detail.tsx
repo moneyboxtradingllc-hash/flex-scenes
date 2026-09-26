@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import type { AppSnapshot, MediaAsset } from "@/lib/domain";
+import { LibraryCharacterPortrait } from "@/components/library-media-thumbnail";
 
 function parseSettings(asset: MediaAsset): Record<string, unknown> {
   try { return JSON.parse(asset.settingsJson || "{}") as Record<string, unknown>; }
@@ -93,7 +94,7 @@ export function PremiumMediaDetail({
             {asset.type === "image" ? imageError ? <div className="media-detail-fallback"><span>◈</span><strong>Preview unavailable</strong><small>The media record is still available in your archive.</small></div> : <><img src={asset.url} alt={asset.title} onError={() => setImageError(true)} onClick={() => setZoom(true)} className="media-detail-image"/><button className="media-detail-expand" aria-label="View image full size" onClick={() => setZoom(true)}>⤢</button></> : video && !videoError ? <><video src={asset.url} poster={asset.posterUrl ?? undefined} controls playsInline preload="metadata" onLoadedData={() => setVideoReady(true)} onCanPlay={() => setVideoReady(true)} onError={() => setVideoError(true)} className="media-detail-video" aria-label={asset.title}/>{!videoReady && <span className="media-detail-loading" role="status">Loading video…</span>}</> : <div className="media-detail-preview">{asset.posterUrl || !imageError ? <img src={asset.posterUrl ?? asset.url} alt={asset.title} onError={() => setImageError(true)}/> : <span className="media-detail-fallback"><strong>Preview unavailable</strong></span>}<span className="media-detail-preview-label">{videoError ? "Video unavailable · poster preview" : "Preview only · no playable video attached"}</span></div>}
           </div>
           <div className="media-detail-identity">
-            <div className="media-detail-identity-avatar">{character && <button onClick={() => openCharacter(character.id)} aria-label={`Open ${character.name}`}><img src={character.portraitUrl} alt=""/></button>}</div>
+            <div className="media-detail-identity-avatar">{character && <button onClick={() => openCharacter(character.id)} aria-label={`Open ${character.name}`}><LibraryCharacterPortrait src={character.portraitUrl} name={character.name}/></button>}</div>
             <div className="media-detail-identity-copy"><div className="media-detail-identity-line"><h1 id="media-detail-title">{asset.title || "Untitled scene"}</h1><time dateTime={asset.createdAt}>{formatDate(asset.createdAt)}</time></div><p>{character ? <button onClick={() => openCharacter(character.id)}>{character.name}</button> : "Unassigned character"}{asset.caption && <><span> · </span>{asset.caption}</>}</p></div>
           </div>
         </div>

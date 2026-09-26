@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { CharacterBrainContext, CharacterBrainResponse, CharacterProfile, ConversationProviderDeployment, ConversationSummary, CreativeMemory, GenerationJob, MediaAsset, NoveltySignal, RecentCreativeScene, SceneProposal, SceneProposalStatus } from "./domain";
-import { emptyCreativeMemory, fixtureCharacterProfile } from "./brain-defaults";
+import { emptyCharacterProfile, emptyCreativeMemory } from "./brain-defaults";
 import { repository } from "./repository";
 import { mockImageCapabilities, mockVideoCapabilities } from "./providers";
 
@@ -168,7 +168,7 @@ export class CharacterDirectorService {
   readonly contextLimits={recentMessages:8,pinnedMemories:8,recentScenes:10,summaryCharacters:360,messageCharacters:1200,pinnedMemoryCharacters:500};
   buildContext(conversationId:string):CharacterBrainContext {
     const conversation=repository.conversations().find((item)=>item.id===conversationId);if(!conversation)throw new Error("Conversation not found");
-    const character=repository.character(conversation.characterId);const profile=repository.characterProfile(character.id)??fixtureCharacterProfile(character.id);const allMessages=repository.messages(conversationId);
+    const character=repository.character(conversation.characterId);const profile=repository.characterProfile(character.id)??emptyCharacterProfile(character.id);const allMessages=repository.messages(conversationId);
     const recentMessages=allMessages.slice(-this.contextLimits.recentMessages);let summary=repository.conversationSummary(conversationId);
     if(!summary){summary={conversationId,summary:"",summarizedThroughMessageId:null,summarizedAt:null,pinnedFacts:[],recentUnsummarizedMessageIds:[]};}
     const summarizableMessages=allMessages.slice(0,Math.max(0,allMessages.length-this.contextLimits.recentMessages));
@@ -260,7 +260,7 @@ export class CharacterDirectorService {
   }
   async reactToMedia(media:MediaAsset,job:GenerationJob) {
     if(!job.conversationId||repository.mediaReactions().some((item)=>item.mediaId===media.id))return;
-    const character=repository.character(job.characterId);const profile=repository.characterProfile(job.characterId)??fixtureCharacterProfile(job.characterId);const input=parse<Record<string,unknown>>(job.settingsJson,{});const scene=(input.sceneContext??{}) as Record<string,string>;
+    const character=repository.character(job.characterId);const profile=repository.characterProfile(job.characterId)??emptyCharacterProfile(job.characterId);const input=parse<Record<string,unknown>>(job.settingsJson,{});const scene=(input.sceneContext??{}) as Record<string,string>;
     const sceneDetails=[scene.location,scene.wardrobe,scene.lighting].filter(Boolean).join(", ");
     const message=profile.conversationalProfile.speakingStyle.toLowerCase().includes("economical")?`The composition held together. I’d keep ${scene.lighting||"the light"} and try one cleaner angle next.`:profile.conversationalProfile.speakingStyle.toLowerCase().includes("lively")?`Oh, I love how this turned out${sceneDetails?` at ${scene.location}`:""}. Next I want to see a little more movement through the frame.`:`The ${scene.lighting||"light"} is doing exactly what I hoped. I’d like to see this look move in a slow, quiet shot next.`;
     const proposalId=typeof input.proposalId==="string"?input.proposalId:null;this.markProposalGenerated(proposalId,character.id,job.conversationId,media.id);

@@ -4,18 +4,19 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { db } from "../lib/db";
-import { seedDatabase } from "../lib/seed";
+import { seedTestDatabase } from "./test-seed";
 import { characterDirectorService, canUseAdultConversation, evaluateNovelty, validateCharacterBrainResponse } from "../lib/character-director";
 import { repository } from "../lib/repository";
 import { generationService } from "../lib/services";
 import type { CharacterBrainResponse } from "../lib/domain";
-import { emptyCreativeMemory, fixtureCharacterProfile } from "../lib/brain-defaults";
+import { emptyCreativeMemory } from "../lib/brain-defaults";
+import { fixtureCharacterProfile } from "./test-character-profile";
 
-seedDatabase();
+seedTestDatabase();
 const conversation=(characterId:string)=>repository.conversationForCharacter(characterId)!.id;
 const migration=(file:string)=>fs.readFileSync(path.join(process.cwd(),"lib","migrations",file),"utf8");
 function migrationDatabase(){const db=new DatabaseSync(":memory:");db.exec("PRAGMA foreign_keys=ON; CREATE TABLE characters(id TEXT PRIMARY KEY); CREATE TABLE conversations(id TEXT PRIMARY KEY,characterId TEXT); CREATE TABLE media(id TEXT PRIMARY KEY); CREATE TABLE messages(id TEXT PRIMARY KEY);");return db;}
-function createTempCharacter(){const id=`test-director-${randomUUID()}`;const convo=`${id}-conversation`;const now=new Date().toISOString();db.prepare("INSERT INTO characters VALUES(?,?,?,?,?,?,?,?,?)").run(id,"Test Director","@test","/fixtures/test.png","Temporary test character","Test personality","Test identity","{}",now);db.prepare("INSERT INTO conversations VALUES(?,?,?,?)").run(convo,id,now,0);const profile=fixtureCharacterProfile(id);profile.initiativeLevel="DIRECTOR";repository.saveCharacterProfile(profile);repository.saveCreativeMemory(emptyCreativeMemory(id));repository.saveInitiativeState({characterId:id,lastEvaluatedAt:null,nextEligibleAt:null,lastProactiveProposalAt:null,dailyCount:0,dailyCountDate:now.slice(0,10),cooldownSeconds:28800,maxPerDay:1});return {id,convo};}
+function createTempCharacter(){const id=`test-director-${randomUUID()}`;const convo=`${id}-conversation`;const now=new Date().toISOString();db.prepare("INSERT INTO characters VALUES(?,?,?,?,?,?,?,?,?)").run(id,"Test Director","@test","/qa-fixtures/test.png","Temporary test character","Test personality","Test identity","{}",now);db.prepare("INSERT INTO conversations VALUES(?,?,?,?)").run(convo,id,now,0);const profile=fixtureCharacterProfile(id);profile.initiativeLevel="DIRECTOR";repository.saveCharacterProfile(profile);repository.saveCreativeMemory(emptyCreativeMemory(id));repository.saveInitiativeState({characterId:id,lastEvaluatedAt:null,nextEligibleAt:null,lastProactiveProposalAt:null,dailyCount:0,dailyCountDate:now.slice(0,10),cooldownSeconds:28800,maxPerDay:1});return {id,convo};}
 function cleanTempCharacter(id:string,convo:string){db.exec("BEGIN IMMEDIATE;");try{db.prepare("DELETE FROM proposalReferences WHERE proposalId IN (SELECT id FROM sceneProposals WHERE characterId=?)").run(id);db.prepare("DELETE FROM sceneProposals WHERE characterId=?").run(id);db.prepare("DELETE FROM chatUsageLedger WHERE characterId=?").run(id);db.prepare("DELETE FROM conversationSummaries WHERE conversationId=?").run(convo);db.prepare("DELETE FROM pinnedMemories WHERE conversationId=?").run(convo);db.prepare("DELETE FROM messages WHERE conversationId=?").run(convo);db.prepare("DELETE FROM conversationMemory WHERE conversationId=?").run(convo);db.prepare("DELETE FROM conversations WHERE id=?").run(convo);db.prepare("DELETE FROM creativeMemories WHERE characterId=?").run(id);db.prepare("DELETE FROM initiativeStates WHERE characterId=?").run(id);db.prepare("DELETE FROM characterBrainProfiles WHERE characterId=?").run(id);db.prepare("DELETE FROM characters WHERE id=?").run(id);db.exec("COMMIT;");}catch(error){db.exec("ROLLBACK;");throw error;}}
 
 describe("Character Director M1 local brain",()=>{

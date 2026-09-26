@@ -15,10 +15,14 @@ public/generated/
 public/imports/
 public/fixtures/scene-*.svg
 coverage/
+.artifacts/
 .artifacts/visual/
 .artifacts/messages-hub-qa-data/
 .artifacts/messages-hub-qa-data-*
 .artifacts/reference-vault-qa-data-*
+.artifacts/db-backups/
+.artifacts/vitest-data-*
+.artifacts/m6-2-visual-qa/
 .env*
 !.env.example
 *.log

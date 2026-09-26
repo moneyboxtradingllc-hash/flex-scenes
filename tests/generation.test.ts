@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { db } from "../lib/db";
-import { seedDatabase } from "../lib/seed";
+import { seedTestDatabase } from "./test-seed";
 import { generationService } from "../lib/services";
 import { repository } from "../lib/repository";
 import { MockImageProvider, MockVideoProvider } from "../lib/providers";
 
-seedDatabase();
+seedTestDatabase();
 const characterId = repository.characters()[0].id;
 const input = (simulation:"success"|"failure"|"timeout"="success") => ({characterId,mode:"image" as const,prompt:"Deterministic test frame",aspectRatio:"4:5",preset:"Hero",simulation});
 describe("mock generation lifecycle",()=>{

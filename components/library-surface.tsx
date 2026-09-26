@@ -50,7 +50,7 @@ export function PremiumLibrary({
   const [status, setStatus] = useState("");
   const [importOpen, setImportOpen] = useState(false);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
-  const [importCharacter, setImportCharacter] = useState(data.characters[0]?.id ?? "");
+  const [importCharacter, setImportCharacter] = useState("");
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const deferredQuery = useDeferredValue(search.trim().toLocaleLowerCase());
@@ -146,7 +146,7 @@ export function PremiumLibrary({
   return <section className="library-vault" aria-labelledby="library-title">
     <header className="library-heading">
       <div><p className="library-kicker">Private media archive</p><h1 id="library-title">Library</h1><p className="library-subtitle">Every scene, reference, and import in one place.</p></div>
-      <div className="library-header-actions"><button className="library-secondary-button" aria-label="Import media" onClick={() => { setImportCharacter(characterId || data.characters[0]?.id || ""); setImportOpen(true); }}><span className="library-mobile-action-label">Import</span><span className="library-desktop-action-label">＋ Import media</span></button><button className="library-primary-button" aria-label="Create Scene" onClick={() => create(undefined, undefined, characterId || data.characters[0]?.id)}><span className="library-mobile-action-label">Create</span><span className="library-desktop-action-label">Create Scene</span></button></div>
+      <div className="library-header-actions"><button className="library-secondary-button" aria-label="Import media" onClick={() => { setImportCharacter(characterId); setImportOpen(true); }}><span className="library-mobile-action-label">Import</span><span className="library-desktop-action-label">＋ Import media</span></button><button className="library-primary-button" aria-label="Create Scene" onClick={() => create(undefined, undefined, characterId || undefined)}><span className="library-mobile-action-label">Create</span><span className="library-desktop-action-label">Create Scene</span></button></div>
     </header>
 
     <label className="library-search"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search scenes, characters, collections, notes…" aria-label="Search media, characters, collections, and notes" />{search && <button onClick={() => setSearch("")} aria-label="Clear search">×</button>}</label>
@@ -182,7 +182,6 @@ export function PremiumLibrary({
     {emptyLibrary && <div className="library-empty"><div>▧</div><h2>Your generated and imported media will appear here.</h2><p>Create a scene or bring in a local image or video to start your private archive.</p><div className="library-empty-actions"><button onClick={() => create()}>Create Scene</button><button className="secondary" onClick={() => setImportOpen(true)}>Import media</button></div></div>}
     {status && <p className="library-status" role="status">{status}</p>}
 
-    {(creatingCollection || renaming) && <div className="library-dialog-backdrop" onClick={() => { setCreatingCollection(false); setRenaming(false); }}><section role="dialog" aria-modal="true" aria-labelledby="library-collection-dialog-title" onClick={(event) => event.stopPropagation()}><h2 id="library-collection-dialog-title">{renaming ? "Rename collection" : "New collection"}</h2><input autoFocus value={collectionName} onChange={(event) => setCollectionName(event.target.value)} onKeyDown={(event) => event.key === "Enter" && (renaming ? renameCollection() : createCollection())} placeholder="Collection name"/><div><button onClick={() => { setCreatingCollection(false); setRenaming(false); }}>Cancel</button><button onClick={renaming ? renameCollection : createCollection}>{renaming ? "Save" : "Create"}</button></div></section></div>}
     {importOpen && <div className="library-dialog-backdrop" onClick={() => setImportOpen(false)}><section role="dialog" aria-modal="true" aria-labelledby="library-import-title" onClick={(event) => event.stopPropagation()}><h2 id="library-import-title">Import image or video</h2><p>Your local file will be added as an imported MediaAsset.</p>{data.characters.length > 0 ? <label>Associate with character<select value={importCharacter} onChange={(event) => setImportCharacter(event.target.value)}>{data.characters.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></label> : <p>Create a character before importing media.</p>}<input ref={inputRef} type="file" accept="image/*,video/*" disabled={!importCharacter || busy} onChange={(event) => upload(event.target.files?.[0])}/><div><button onClick={() => setImportOpen(false)}>Cancel</button><span>{busy ? "Importing…" : "Files up to 50 MB"}</span></div></section></div>}
   </section>;
 }
