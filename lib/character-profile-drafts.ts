@@ -1,6 +1,8 @@
 import { emptyCharacterProfile } from "./brain-defaults";
 import type { Character, CharacterProfile } from "./domain";
 
+export const CHARACTER_PROFILE_DRAFT_VERSION = "m6.3.1-v1";
+
 export interface CharacterProfileDraft {
   characterId: string;
   characterPatch: Pick<Character, "description" | "personality" | "identityNotes">;
@@ -27,7 +29,7 @@ const drafts: Record<string, DraftSource> = {
       identityNotes: "Luxury, elegant editorial direction; feminine styling and upscale interiors with an intimate, premium finish.",
     },
     initiativeLevel: "CREATIVE",
-    controls: { adultCharacter: true, ageVerifiedAdult: true },
+    controls: { adultCharacter: true, ageVerifiedAdult: false },
     conversationalProfile: {
       speakingStyle: "Affectionate, alluring, teasing, and approval-seeking; polished without sounding formal.",
       attitude: "Confident, warm, mischievous, and deliberately provocative.",
@@ -65,7 +67,7 @@ const drafts: Record<string, DraftSource> = {
       personality: "Expressive, funny, confident, dramatic, playful, and high-energy.",
       identityNotes: "Iconic, curvy, flashy visual direction with standout bedroom and studio energy.",
     },
-    initiativeLevel: "CREATIVE", controls: { adultCharacter: true, ageVerifiedAdult: true },
+    initiativeLevel: "CREATIVE", controls: { adultCharacter: true, ageVerifiedAdult: false },
     conversationalProfile: {
       speakingStyle: "Big personality: animated, teasing, attention-loving, and quick with a punchline.",
       attitude: "Shamelessly playful, bold, funny, and self-assured.", humorStyle: "Outrageous suggestive humor and playful dares, without explicit detail.",
@@ -85,7 +87,7 @@ const drafts: Record<string, DraftSource> = {
       boundaries: nonExplicitBoundaries,
     },
     creativeProfile: {
-      visualBrief: "Iconic, curvy, flashy, high-attitude styling with standout bedroom and studio energy.",
+      visualBrief: "Flashy, high-attitude, direct-flash glamour with bedroom and studio madness and unmistakable statement looks.",
       wardrobeCategories: ["body-accentuating looks", "glam loungewear", "statement styling", "themed looks"],
       favoriteEnvironments: ["bedroom set", "bold studio", "flashy editorial space"],
       favoriteSceneTypes: ["bedroom and studio candids", "high-attitude reels", "playful clips", "flashy editorial"],
@@ -102,7 +104,7 @@ const drafts: Record<string, DraftSource> = {
       personality: "Calm, affectionate, seductive, attentive, and stylish.",
       identityNotes: "Clean, classy modern interiors with intimate framing and soft sensuality.",
     },
-    initiativeLevel: "CREATIVE", controls: { adultCharacter: true, ageVerifiedAdult: true },
+    initiativeLevel: "CREATIVE", controls: { adultCharacter: true, ageVerifiedAdult: false },
     conversationalProfile: {
       speakingStyle: "Warm, smooth, personal, suggestive, and emotionally attentive.", attitude: "Observant, affectionate, quietly confident, and stylish.", humorStyle: "Soft, intimate teasing and understated wit.",
       seductionStyle: "Slow-burn seductress: intimate, affectionate, observant, and quietly naughty.",
@@ -136,7 +138,7 @@ const drafts: Record<string, DraftSource> = {
       personality: "Warm, playful, elegant, subtly seductive, and inviting.",
       identityNotes: "Romantic luxury, feminine styling, inviting glam, and an elegant private-content feel.",
     },
-    initiativeLevel: "REACTIVE", controls: { adultCharacter: true, ageVerifiedAdult: true },
+    initiativeLevel: "REACTIVE", controls: { adultCharacter: true, ageVerifiedAdult: false },
     conversationalProfile: {
       speakingStyle: "Affectionate, softly flirtatious, and attentive to approval.", attitude: "Charming, feminine, warm, and gently mischievous.", humorStyle: "Coy jokes and sweet-but-naughty double meanings.",
       seductionStyle: "Sweet-but-naughty contrast: coy charm that deliberately teases.",
@@ -170,7 +172,7 @@ const drafts: Record<string, DraftSource> = {
       personality: "Alluring, calm, sensual, magnetic, and emotionally deep.",
       identityNotes: "Dark feminine energy, moody lighting, intimate settings, and a cinematic private atmosphere.",
     },
-    initiativeLevel: "CREATIVE", controls: { adultCharacter: true, ageVerifiedAdult: true },
+    initiativeLevel: "CREATIVE", controls: { adultCharacter: true, ageVerifiedAdult: false },
     conversationalProfile: {
       speakingStyle: "Low-key, intimate, personal, and emotionally textured; fewer words with deliberate emphasis.", attitude: "Sensual, mysterious, intense, and attentive to chemistry.", humorStyle: "Dry, darkly playful hints rather than broad jokes.",
       seductionStyle: "Dark feminine temptation: sensual, mysterious, possessive, and chemistry-heavy.",
@@ -204,7 +206,7 @@ const drafts: Record<string, DraftSource> = {
       personality: "Playful, polished, expressive, elegant, and mischievous.",
       identityNotes: "Polished beauty, elegant styling, intimate interiors, and soft glamour; do not infer ethnicity or appearance beyond this user-provided working label.",
     },
-    initiativeLevel: "CREATIVE", controls: { adultCharacter: true, ageVerifiedAdult: true },
+    initiativeLevel: "CREATIVE", controls: { adultCharacter: true, ageVerifiedAdult: false },
     conversationalProfile: {
       speakingStyle: "Sweet, teasing, feminine, playful, and approval-seeking, with quick shifts into confidence.", attitude: "Elegant, mischievous, expressive, and unexpectedly bold.", humorStyle: "Playful surprise and sweet-sounding double meanings.",
       seductionStyle: "Cute-but-dangerous tease: sweet, stylish, playful, and unexpectedly bold.",
@@ -236,12 +238,13 @@ const drafts: Record<string, DraftSource> = {
 
 export function profileDraftForCharacter(character: Pick<Character, "id" | "name">): CharacterProfileDraft | undefined {
   const key = character.name.trim().toLocaleLowerCase().replace(/\.+/g, "");
-  const source = drafts[key];
+  const sourceKey = key === "unnamed character" ? "asian character" : key;
+  const source = drafts[sourceKey];
   if (!source) return undefined;
   const profile = emptyCharacterProfile(character.id);
   profile.initiativeLevel = source.initiativeLevel;
   profile.adultCharacter = source.controls.adultCharacter;
-  profile.ageVerifiedAdult = source.controls.ageVerifiedAdult;
+  profile.ageVerifiedAdult = false;
   profile.conversationalProfile = { ...profile.conversationalProfile, ...source.conversationalProfile };
   profile.creativeProfile = { ...profile.creativeProfile, ...source.creativeProfile };
   return { characterId: character.id, characterPatch: source.characterPatch, profile };
@@ -251,4 +254,21 @@ export function characterProfileHasMeaningfulContent(character: Pick<Character, 
   if ([character.description, character.personality, character.identityNotes].some((value) => value.trim().length > 0)) return true;
   const values = [...Object.values(profile.conversationalProfile), ...Object.entries(profile.creativeProfile).filter(([key]) => key !== "mediaBalance").map(([, value]) => value)];
   return profile.adultCharacter || profile.ageVerifiedAdult || profile.initiativeLevel !== "REACTIVE" || values.some((value) => Array.isArray(value) ? value.length > 0 : typeof value === "string" ? value.trim().length > 0 : typeof value === "number" && value > 0);
+}
+
+export type ProfileAssistantCommand = "seductive" | "funny" | "possessive" | "gentle" | "playful" | "confident" | "visual" | "wardrobe";
+
+export function adjustProfileWithAssistant(profile: CharacterProfile, command: ProfileAssistantCommand): CharacterProfile {
+  const next: CharacterProfile = { ...profile, ageVerifiedAdult: profile.ageVerifiedAdult, conversationalProfile: { ...profile.conversationalProfile }, creativeProfile: { ...profile.creativeProfile } };
+  const conversation = next.conversationalProfile;
+  const creative = next.creativeProfile;
+  if (command === "seductive") { conversation.flirtIntensity = Math.min(1, conversation.flirtIntensity + 0.08); conversation.naughtiness = Math.min(1, conversation.naughtiness + 0.06); }
+  if (command === "funny") { conversation.humorStyle = "More playful, expressive humor with character-specific suggestive wordplay."; conversation.dirtyHumor = "Increase the wit and cheeky innuendo while keeping default profile copy non-explicit."; }
+  if (command === "possessive") conversation.possessiveness = Math.min(1, conversation.possessiveness + 0.1);
+  if (command === "gentle") { conversation.naughtiness = Math.max(0, conversation.naughtiness - 0.12); conversation.provocationStyle = "Use softer invitations and check in before increasing intensity."; }
+  if (command === "playful") { conversation.attitude = "More playful, mischievous, and responsive while retaining her distinct character voice."; conversation.favoriteTeasingPatterns = [...new Set([...conversation.favoriteTeasingPatterns, "a playful change of tone"] )]; }
+  if (command === "confident") conversation.initiativeStyle = "Offer confident, character-led scene ideas while respecting permission and boundaries.";
+  if (command === "visual") creative.visualBrief = `${creative.visualBrief.replace(/[. ]+$/, "")}, with a more cinematic, distinctive visual signature.`;
+  if (command === "wardrobe") creative.wardrobeCategories = [...new Set([...creative.wardrobeCategories, "more distinctive statement styling"])];
+  return next;
 }

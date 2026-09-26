@@ -1,69 +1,55 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { Character, CharacterProfile } from "@/lib/domain";
-import { characterProfileHasMeaningfulContent, profileDraftForCharacter } from "@/lib/character-profile-drafts";
+import { adjustProfileWithAssistant, characterProfileHasMeaningfulContent, profileDraftForCharacter, type ProfileAssistantCommand } from "@/lib/character-profile-drafts";
 
-const labels: Record<string, string> = {
-  speakingStyle: "Messaging style", attitude: "Tone", humorStyle: "Humor", seductionStyle: "Seduction style",
-  flirtIntensity: "Flirt intensity", naughtiness: "Naughtiness", provocationStyle: "Provocation style",
-  dirtyHumor: "Suggestive humor", possessiveness: "Possessiveness", approvalSeeking: "Approval seeking",
-  initiativeStyle: "Initiative style", favoriteTeasingPatterns: "Favorite teasing patterns",
-  privateRelationshipDynamic: "Private relationship dynamic", escalationStyle: "Escalation style",
-  spicyScenePreferences: "Suggestive scene preferences", permissionStyle: "Permission style",
-  approvalReaction: "Positive reaction", rejectionReaction: "Negative reaction", boundaries: "Boundaries",
-  visualBrief: "Visual brief", wardrobeCategories: "Wardrobe", favoriteSceneTypes: "Favorite scene types",
-  favoriteEnvironments: "Favorite settings", preferredLighting: "Lighting", preferredMoods: "Mood",
-  preferredShotTypes: "Shot types", visualThemes: "Visual themes", ideasToTry: "Ideas to try",
-};
+const edits: { id: ProfileAssistantCommand; title: string }[] = [
+  { id: "seductive", title: "More seductive" }, { id: "funny", title: "Funnier" },
+  { id: "possessive", title: "More possessive" }, { id: "gentle", title: "Less aggressive" },
+  { id: "playful", title: "More playful" }, { id: "confident", title: "More dominant" },
+  { id: "visual", title: "Change visual vibe" }, { id: "wardrobe", title: "Change wardrobe energy" },
+];
 
-function display(value: unknown) {
-  if (Array.isArray(value)) return value.join(" · ");
-  if (typeof value === "number") return `${Math.round(value * 100)} / 100`;
-  return String(value ?? "");
-}
-
-export function CharacterProfileDraftControls({ character, profile, refresh, onApplied }: {
-  character: Character;
-  profile: CharacterProfile;
-  refresh: () => Promise<void>;
+export function CharacterProfileDraftControls({ character, profile, refresh, onApplied, initialMode }: {
+  character: Character; profile: CharacterProfile; refresh: () => Promise<void>;
   onApplied?: (result: { character: Character; profile: CharacterProfile }) => void;
+  initialMode?: "edit" | "regenerate";
 }) {
-  const [draft, setDraft] = useState<ReturnType<typeof profileDraftForCharacter>>(undefined);
+  const [mode, setMode] = useState<"edit" | "regenerate" | null>(initialMode ?? null);
+  const [command, setCommand] = useState<ProfileAssistantCommand | null>(null);
+  const [confirmReplace, setConfirmReplace] = useState(false);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
-  const [confirmReplace, setConfirmReplace] = useState(false);
-  const existingContent = characterProfileHasMeaningfulContent(character, profile);
-  const fields = draft ? [
-    ["Identity", [["Identity summary", draft.characterPatch.description], ["Personality", draft.characterPatch.personality], ["Visual identity", draft.characterPatch.identityNotes], [labels.visualBrief, draft.profile.creativeProfile.visualBrief], [labels.wardrobeCategories, draft.profile.creativeProfile.wardrobeCategories], [labels.favoriteSceneTypes, draft.profile.creativeProfile.favoriteSceneTypes]]],
-    ["Character behavior", Object.entries(draft.profile.conversationalProfile).filter(([key]) => key in labels).map(([key, value]) => [labels[key], display(value)])],
-  ] as const : [];
-  const apply = async () => {
+  const draft = useMemo(() => profileDraftForCharacter(character), [character]);
+  const hasContent = characterProfileHasMeaningfulContent(character, profile);
+  const applyRegeneration = async () => {
     if (!draft) return;
     setBusy(true); setMessage("");
     try {
-      const response = await fetch("/api/actions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "character-profile-apply-draft", characterId: character.id, confirmed: confirmReplace }) });
+      const response = await fetch("/api/actions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "character-profile-apply-draft", characterId: character.id, confirmed: true }) });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error ?? "Could not apply profile draft.");
-      onApplied?.(result);
-      await refresh();
-      setDraft(undefined); setConfirmReplace(false); setMessage("Profile draft applied.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not apply profile draft.");
-    } finally { setBusy(false); }
+      if (!response.ok) throw new Error(result.error ?? "Could not refresh the profile.");
+      onApplied?.(result); await refresh(); setMode(null); setConfirmReplace(false); setMessage("Profile updated.");
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Could not update the profile."); }
+    finally { setBusy(false); }
   };
-  return <section className="rounded-2xl border border-fuchsia-300/15 bg-fuchsia-950/10 p-4" aria-label="Assistant profile draft">
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <div><h2 className="font-semibold">Profile assistant</h2><p className="mt-1 text-xs text-zinc-400">Local draft · review before applying · no provider calls</p></div>
-      <button type="button" onClick={() => { const next = profileDraftForCharacter(character); setDraft(next); setConfirmReplace(false); setMessage(next ? "Review the complete draft before applying it." : "No canonical draft is defined for this character yet."); }} className="min-h-11 rounded-xl border border-fuchsia-300/25 px-4 text-sm font-semibold text-fuchsia-100">Generate Profile Draft</button>
-    </div>
-    {draft && <div className="mt-4 space-y-4">
-      <p className="text-xs text-zinc-400">Adult character · age verified · initiative: {draft.profile.initiativeLevel.toLocaleLowerCase()}</p>
-      {fields.map(([title, entries]) => <section key={title} className="rounded-xl bg-black/20 p-3"><h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-zinc-300">{title}</h3><dl className="space-y-2">{entries.map(([label, value]) => <div key={label}><dt className="text-[11px] text-zinc-500">{label}</dt><dd className="text-sm text-zinc-200">{display(value)}</dd></div>)}</dl></section>)}
-      <section className="rounded-xl bg-black/20 p-3"><h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-zinc-300">Character behavior controls</h3><dl className="grid gap-2 sm:grid-cols-2">{(["flirtIntensity", "naughtiness", "possessiveness", "approvalSeeking"] as const).map((key) => <div key={key}><dt className="text-[11px] text-zinc-500">{labels[key]}</dt><dd className="text-sm text-zinc-200">{display(draft.profile.conversationalProfile[key])}</dd></div>)}</dl></section>
-      <div className="flex flex-wrap items-center gap-3"><button type="button" disabled={busy} onClick={() => existingContent ? setConfirmReplace(true) : void apply()} className="min-h-11 rounded-xl bg-fuchsia-500 px-4 text-sm font-bold disabled:opacity-50">Apply Draft</button><button type="button" onClick={() => setDraft(undefined)} className="min-h-11 rounded-xl px-3 text-sm text-zinc-400">Discard</button></div>
-      {confirmReplace && <div role="alertdialog" aria-modal="true" aria-labelledby="profile-replace-title" className="rounded-xl border border-amber-300/25 bg-amber-950/20 p-3"><h3 id="profile-replace-title" className="font-semibold">Replace existing profile content?</h3><p className="mt-1 text-sm text-zinc-300">Applying this draft replaces the current description, personality, visual notes, and structured profile. The character name, handle, portrait, media, and references remain unchanged.</p><div className="mt-3 flex gap-2"><button type="button" disabled={busy} onClick={() => void apply()} className="min-h-11 rounded-lg bg-amber-500 px-3 text-sm font-bold text-black">Confirm and Apply</button><button type="button" onClick={() => setConfirmReplace(false)} className="min-h-11 rounded-lg px-3 text-sm">Cancel</button></div></div>}
-    </div>}
+  const applyEdit = async () => {
+    if (!command) return;
+    setBusy(true); setMessage("");
+    try {
+      const response = await fetch("/api/actions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "character-profile-assistant-adjust", characterId: character.id, command }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "Could not update the profile.");
+      await refresh(); setCommand(null); setMode(null); setMessage("Profile adjustment applied.");
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Could not update the profile."); }
+    finally { setBusy(false); }
+  };
+  const preview = command ? adjustProfileWithAssistant(profile, command) : null;
+  return <section className="rounded-2xl border border-fuchsia-300/15 bg-[#121015] p-4" aria-label="Profile assistant">
+    {!initialMode && <div className="flex flex-wrap gap-2"><button type="button" onClick={() => { setMode(mode === "edit" ? null : "edit"); setCommand(null); }} className="min-h-11 rounded-xl bg-fuchsia-500 px-4 text-sm font-semibold text-white">Edit with Assistant</button><button type="button" onClick={() => { setMode(mode === "regenerate" ? null : "regenerate"); setCommand(null); setConfirmReplace(false); }} className="min-h-11 rounded-xl border border-white/15 px-4 text-sm text-zinc-200">Regenerate Profile</button></div>}
+    {mode === "edit" && <div className="mt-3"><p className="text-sm text-zinc-300">Choose a direction. The assistant keeps her identity and boundaries intact.</p><div className="mt-3 flex flex-wrap gap-2">{edits.map((item) => <button key={item.id} type="button" aria-pressed={command === item.id} onClick={() => setCommand(item.id)} className={`min-h-10 rounded-full border px-3 text-xs ${command === item.id ? "border-fuchsia-300 bg-fuchsia-500/20 text-fuchsia-100" : "border-white/10 text-zinc-300"}`}>{item.title}</button>)}</div>{preview && <div className="mt-3 rounded-xl bg-black/25 p-3 text-sm text-zinc-300"><p className="font-semibold text-white">Preview</p><p className="mt-1">{preview.conversationalProfile.seductionStyle}</p><p className="mt-1 text-xs text-zinc-400">Flirt {Math.round(preview.conversationalProfile.flirtIntensity * 100)} · playful edge {Math.round(preview.conversationalProfile.naughtiness * 100)}</p><button type="button" disabled={busy} onClick={() => void applyEdit()} className="mt-3 min-h-11 rounded-lg bg-fuchsia-500 px-4 text-sm font-bold">Apply adjustment</button></div>}</div>}
+    {mode === "regenerate" && <div className="mt-3 rounded-xl bg-black/25 p-3"><p className="text-sm text-zinc-300">Review the canonical assistant profile for {character.name}. Your portrait, handle, media, references, and conversations stay untouched.</p>{draft ? <><p className="mt-2 text-sm text-white">{draft.characterPatch.description}</p><p className="mt-1 text-xs text-zinc-400">{draft.profile.conversationalProfile.seductionStyle} · {draft.profile.initiativeLevel.toLowerCase()} initiative · age verification remains separate.</p>{hasContent && !confirmReplace ? <button type="button" onClick={() => setConfirmReplace(true)} className="mt-3 min-h-11 rounded-lg border border-amber-300/30 px-4 text-sm text-amber-100">Review replacement</button> : <div className="mt-3 flex gap-2"><button type="button" disabled={busy} onClick={() => void applyRegeneration()} className="min-h-11 rounded-lg bg-fuchsia-500 px-4 text-sm font-bold">{confirmReplace ? "Confirm and Apply" : "Apply Profile"}</button>{confirmReplace && <button type="button" onClick={() => setConfirmReplace(false)} className="min-h-11 px-3 text-sm text-zinc-300">Cancel</button>}</div>}</> : <p className="mt-2 text-sm text-zinc-500">No canonical profile is available for this character yet.</p>}</div>}
     {message && <p role="status" className="mt-3 text-xs text-zinc-400">{message}</p>}
   </section>;
 }

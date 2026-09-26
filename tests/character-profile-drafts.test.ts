@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { characterProfileHasMeaningfulContent, profileDraftForCharacter } from "../lib/character-profile-drafts";
+import { adjustProfileWithAssistant, characterProfileHasMeaningfulContent, profileDraftForCharacter } from "../lib/character-profile-drafts";
 import { emptyCharacterProfile } from "../lib/brain-defaults";
 import type { Character } from "../lib/domain";
 import { repository } from "../lib/repository";
 import { db } from "../lib/db";
 import { characterDirectorService } from "../lib/character-director";
 
-const names = ["Valeria", "Ms Juicy", "Tiona", "Ms Orlando", "Nyra", "Asian Character"];
+const names = ["Valeria", "Ms Juicy", "Tiona", "Ms Orlando", "Nyra", "Unnamed Character"];
 
 describe("assistant character profile drafts", () => {
   it("provides six distinct, adult, structured drafts without media or provider dependencies", () => {
@@ -18,7 +18,7 @@ describe("assistant character profile drafts", () => {
       expect(draft!.characterPatch.description).not.toBe("");
       expect(draft!.characterPatch.personality).not.toBe("");
       expect(draft!.profile.adultCharacter).toBe(true);
-      expect(draft!.profile.ageVerifiedAdult).toBe(true);
+      expect(draft!.profile.ageVerifiedAdult).toBe(false);
       expect(draft!.profile.creativeProfile.visualBrief).not.toBe("");
       expect(draft!.profile.creativeProfile.wardrobeCategories.length).toBeGreaterThan(0);
       expect(draft!.profile.creativeProfile.favoriteSceneTypes.length).toBeGreaterThan(0);
@@ -31,6 +31,32 @@ describe("assistant character profile drafts", () => {
       expect(draft!.profile.conversationalProfile.boundaries).toContain("Keep default profile copy seductive and suggestive without describing explicit sexual acts.");
     }
     expect(styles.size).toBe(6);
+  });
+
+  it("keeps age verification separate from assistant edits", () => {
+    const draft = profileDraftForCharacter({ id: "qa-juicy", name: "Ms Juicy" })!;
+    const edited = adjustProfileWithAssistant(draft.profile, "seductive");
+    expect(edited.ageVerifiedAdult).toBe(false);
+    expect(edited.conversationalProfile.flirtIntensity).toBeGreaterThan(draft.profile.conversationalProfile.flirtIntensity);
+    expect(profileDraftForCharacter({ id: "qa-unnamed", name: "Unnamed Character" })?.profile.conversationalProfile.seductionStyle).toContain("Cute-but-dangerous");
+  });
+
+  it("records age verification only through the explicit confirmation method", () => {
+    const character = repository.createCharacter(`Age QA ${Date.now()}`);
+    const draft = profileDraftForCharacter({ id: character.id, name: "Valeria" })!;
+    repository.applyCharacterProfileDraft(character.id, draft.characterPatch, draft.profile);
+    expect(repository.characterProfile(character.id)?.ageVerifiedAdult).toBe(false);
+    expect(() => repository.recordAdultAgeVerification(character.id, false)).toThrow(/confirmation/i);
+    const verified = repository.recordAdultAgeVerification(character.id, true);
+    expect(verified.ageVerifiedAdult).toBe(true);
+    expect(db.prepare("SELECT detailJson FROM activationAudit WHERE event='adult-age-verified' AND detailJson LIKE ?").all(`%${character.id}%`)).toHaveLength(1);
+    db.prepare("DELETE FROM activationAudit WHERE event='adult-age-verified' AND detailJson LIKE ?").run(`%${character.id}%`);
+    db.prepare("DELETE FROM messages WHERE conversationId=(SELECT id FROM conversations WHERE characterId=?)").run(character.id);
+    db.prepare("DELETE FROM conversations WHERE characterId=?").run(character.id);
+    db.prepare("DELETE FROM characterBrainProfiles WHERE characterId=?").run(character.id);
+    db.prepare("DELETE FROM creativeMemories WHERE characterId=?").run(character.id);
+    db.prepare("DELETE FROM initiativeStates WHERE characterId=?").run(character.id);
+    db.prepare("DELETE FROM characters WHERE id=?").run(character.id);
   });
 
   it("offers canonical drafts for period variants and requires explicit approval before replacing real content", () => {

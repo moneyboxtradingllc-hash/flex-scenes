@@ -395,7 +395,7 @@ export function StudioApp({
             /> : characterSelectionReady ? <CharacterChooser characters={data.characters} onSelect={selectCharacter} refresh={refresh} /> : <p>Loading characters…</p>
           )}{" "}
           {view === "settings" && (
-          active ? <CharacterSettings
+            active ? <CharacterSettings key={active.id}
             data={data}
             character={active}
             refresh={refresh}
@@ -1814,153 +1814,34 @@ function Library({
     </>
   );
 }
-function CharacterSettings({
-  data,
-  character,
-  refresh,
-  go,
-  onManageReferences,
-}: {
-  data: AppSnapshot;
-  character?: AppSnapshot["characters"][number];
-  refresh: () => Promise<void>;
-  go: (x: View) => void;
-  onManageReferences?: () => void;
-}) {
+function CharacterSettings({ data, character, refresh, go, onManageReferences }: { data: AppSnapshot; character?: AppSnapshot["characters"][number]; refresh: () => Promise<void>; go: (x: View) => void; onManageReferences?: () => void }) {
   const [form, setForm] = useState(character);
   const [brain, setBrain] = useState(data.characterProfiles.find((item) => item.characterId === character?.id));
   const [status, setStatus] = useState("");
+  const [assistantMode, setAssistantMode] = useState<"edit" | "regenerate" | null>(null);
   if (!character || !form) return null;
   const refs = data.characterReferences.filter((reference) => reference.characterId === character.id);
   const canonicalCount = refs.filter((reference) => reference.active && reference.canonical).length;
+  const cp = brain?.conversationalProfile;
+  const visual = brain?.creativeProfile;
+  const text = (value: unknown) => Array.isArray(value) ? value.join(" · ") : String(value ?? "").trim();
   const update = async () => {
-    await fetch("/api/actions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "character-update",
-        characterId: character.id,
-        characterPatch: {
-          name: form.name,
-          handle: form.handle,
-          description: form.description,
-          personality: form.personality,
-          identityNotes: form.identityNotes,
-          defaultsJson: form.defaultsJson,
-        },
-      }),
-    });
-    if (brain) await fetch("/api/director", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "profile-update", characterId: character.id, ...brain }) });
-    await refresh();
-    setStatus("Saved");
+    const response = await fetch("/api/actions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "character-update", characterId: character.id, characterPatch: { name: form.name, handle: form.handle, description: form.description, personality: form.personality, identityNotes: form.identityNotes, defaultsJson: form.defaultsJson } }) });
+    if (!response.ok) { setStatus("Could not save settings."); return; }
+    await refresh(); setStatus("Saved");
   };
-  return (
-    <div className="mx-auto max-w-3xl">
-      <button
-        onClick={() => go("character")}
-        className="mb-4 text-sm text-fuchsia-300"
-      >
-        ← Back to Character Hub
-      </button>
-      <h1 className="text-3xl font-bold">Character Settings</h1>
-      <p className="mb-6 text-sm text-zinc-500">
-        Visual identity and conversational personality remain deliberately
-        separate.
-      </p>
-      <button onClick={onManageReferences} className="mb-5 rounded-full border border-white/15 px-4 py-2 text-sm text-fuchsia-200">Manage References</button>
-      <div className="grid gap-5 md:grid-cols-2">
-        <section className="rounded-3xl border border-white/8 bg-[#13141b] p-5">
-          <h2 className="mb-4 font-bold">Identity</h2>
-          <label className="label">
-            Name
-            <input
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-            />
-          </label>
-          <label className="label">
-            Handle
-            <input
-              value={form.handle}
-              onChange={(e) => setForm({ ...form, handle: e.target.value })}
-            />
-          </label>
-          <label className="label">
-            Short description
-            <textarea
-              value={form.description}
-              onChange={(e) =>
-                setForm({ ...form, description: e.target.value })
-              }
-            />
-          </label>
-          <label className="label">
-            Appearance / identity notes
-            <textarea
-              value={form.identityNotes}
-              onChange={(e) =>
-                setForm({ ...form, identityNotes: e.target.value })
-              }
-            />
-          </label>
-        </section>
-        <section className="rounded-3xl border border-white/8 bg-[#13141b] p-5">
-          <h2 className="mb-4 font-bold">Personality</h2>
-          <label className="label">
-            Personality and speaking style
-            <textarea
-              value={form.personality}
-              onChange={(e) =>
-                setForm({ ...form, personality: e.target.value })
-              }
-            />
-          </label>
-          <label className="label">
-            Generation defaults (structured JSON)
-            <textarea
-              value={form.defaultsJson}
-              onChange={(e) =>
-                setForm({ ...form, defaultsJson: e.target.value })
-              }
-            />
-          </label>
-          <p className="text-xs text-zinc-500">
-            Future fields: lore, relationship context, reusable positive
-            fragments, negative constraints, image/video defaults.
-          </p>
-        </section>
-      </div>
-      {brain && (
-        <section className="mt-5 rounded-3xl border border-fuchsia-300/15 bg-[#13141b] p-5">
-          <h2 className="font-bold">Creative profile</h2>
-          <p className="mt-1 text-sm text-zinc-500">Shape what she likes to create; these preferences stay separate from her visual identity.</p>
-          <div className="mt-4 grid gap-4 md:grid-cols-2">
-            <label className="label">Initiative<select value={brain.initiativeLevel} onChange={(e)=>setBrain({...brain,initiativeLevel:e.target.value})}><option value="REACTIVE">Reactive · only when asked</option><option value="CREATIVE">Creative · suggest during relevant chats</option><option value="DIRECTOR">Director · proactive ideas when prompted to think</option></select></label>
-            <label className="label">Creative boldness<input type="range" min="0" max="1" step="0.05" value={brain.creativeProfile.creativeBoldness} onChange={(e)=>setBrain({...brain,creativeProfile:{...brain.creativeProfile,creativeBoldness:Number(e.target.value)}})} /></label>
-            {([["favoriteEnvironments","Favorite locations"],["preferredMoods","Preferred moods"],["visualThemes","Visual styles"],["wardrobeCategories","Wardrobe categories"],["cameraEnergy","Camera energy"],["ideasToTry","Ideas she wants to try"],["ideasTiredOf","Scenes she is tired of"]] as const).map(([key,label])=><label key={key} className="label">{label}<input value={brain.creativeProfile[key].join(", ")} onChange={(e)=>setBrain({...brain,creativeProfile:{...brain.creativeProfile,[key]:e.target.value.split(",").map((x)=>x.trim()).filter(Boolean)}})} /></label>)}
-            <label className="label">Repetition tolerance<input type="range" min="0" max="1" step="0.05" value={brain.creativeProfile.repetitionTolerance} onChange={(e)=>setBrain({...brain,creativeProfile:{...brain.creativeProfile,repetitionTolerance:Number(e.target.value)}})} /></label>
-          </div>
-          <div className="mt-5 flex flex-wrap gap-5 text-sm"><label className="flex items-center gap-2"><input type="checkbox" checked={brain.adultCharacter} onChange={(e)=>setBrain({...brain,adultCharacter:e.target.checked,ageVerifiedAdult:e.target.checked?brain.ageVerifiedAdult:false})} /> Explicitly represented as adult</label><label className="flex items-center gap-2"><input type="checkbox" checked={brain.ageVerifiedAdult} disabled={!brain.adultCharacter} onChange={(e)=>setBrain({...brain,ageVerifiedAdult:e.target.checked})} /> Adult age verified</label></div>
-          <p className="mt-2 text-xs text-zinc-500">Adult conversation remains unavailable unless both fields and provider capability explicitly allow it.</p>
-        </section>
-      )}
-      {brain && <div className="mt-5"><CharacterProfileDraftControls character={character} profile={brain} refresh={refresh} onApplied={(result) => { setForm(result.character); setBrain(result.profile); }} /></div>}
-      <button
-        onClick={update}
-        className="mt-5 rounded-2xl bg-fuchsia-500 px-5 py-3 font-bold"
-      >
-        Save Character Settings
-      </button>
-      <span className="ml-3 text-sm text-fuchsia-200">{status}</span>
-      <section className="mt-7 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/8 bg-[#13141b] p-4" aria-label="Reference summary">
-        <div>
-          <h2 className="font-bold">References</h2>
-          <p className="mt-1 text-sm text-zinc-400">{refs.length} total references · {canonicalCount} canonical</p>
-        </div>
-        <button onClick={onManageReferences} className="rounded-full border border-white/15 px-4 py-2 text-sm font-semibold text-fuchsia-200">Manage References</button>
-      </section>
-    </div>
-  );
+  return <div className="mx-auto max-w-3xl px-1 pb-8">
+    <button onClick={() => go("character")} className="mb-3 min-h-11 text-sm text-fuchsia-200">‹ Back to {character.name}</button>
+    <div className="flex items-center gap-3"><span className="character-settings-avatar h-14 w-14 flex-none overflow-hidden rounded-full border border-white/10"><LibraryCharacterPortrait src={character.portraitUrl} name={character.name} /></span><div className="min-w-0"><p className="text-[11px] font-semibold uppercase tracking-[.2em] text-fuchsia-300">Character profile</p><h1 className="text-2xl font-bold">{character.name}</h1>{character.handle && <p className="text-sm text-zinc-500">{character.handle}</p>}</div></div>
+    <div className="mt-4 flex flex-wrap gap-2"><button onClick={() => setAssistantMode("edit")} className="min-h-11 rounded-xl bg-fuchsia-500 px-4 text-sm font-bold">Edit with Assistant</button><button onClick={() => setAssistantMode("regenerate")} className="min-h-11 rounded-xl border border-white/15 px-4 text-sm">Regenerate Profile</button></div>
+    {assistantMode && brain && <div className="mt-3"><div className="mb-2 flex justify-end"><button onClick={() => setAssistantMode(null)} className="min-h-10 px-3 text-xs text-zinc-400">Close</button></div><CharacterProfileDraftControls key={assistantMode} character={character} profile={brain} refresh={refresh} initialMode={assistantMode} onApplied={(result) => { setForm(result.character); setBrain(result.profile); }} /></div>}
+    <section className="mt-5 rounded-2xl border border-white/10 bg-[#111014] p-4"><h2 className="text-xs font-semibold uppercase tracking-[.16em] text-zinc-500">Identity</h2><p className="mt-2 text-lg font-semibold">{character.name}</p><p className="mt-1 text-sm leading-6 text-zinc-300">{character.description}</p></section>
+    {cp && <section className="mt-3 rounded-2xl border border-white/10 bg-[#111014] p-4"><h2 className="text-xs font-semibold uppercase tracking-[.16em] text-zinc-500">Personality</h2><p className="mt-2 text-sm leading-6 text-zinc-200">{cp.seductionStyle}</p><p className="mt-1 text-sm text-zinc-400">{cp.speakingStyle}</p><p className="mt-2 text-xs leading-5 text-zinc-500">{cp.privateRelationshipDynamic}</p></section>}
+    {visual && <section className="mt-3 rounded-2xl border border-white/10 bg-[#111014] p-4"><h2 className="text-xs font-semibold uppercase tracking-[.16em] text-zinc-500">Creative DNA</h2><p className="mt-2 text-sm leading-6 text-zinc-200">{visual.visualBrief}</p><p className="mt-2 text-xs text-zinc-400"><b className="text-zinc-300">Wardrobe</b> · {text(visual.wardrobeCategories)}</p><p className="mt-1 text-xs text-zinc-400"><b className="text-zinc-300">Environments</b> · {text(visual.favoriteEnvironments)}</p><p className="mt-1 text-xs text-zinc-400"><b className="text-zinc-300">Scene energy</b> · {text(visual.favoriteSceneTypes)}</p></section>}
+    {cp && <section className="mt-3 rounded-2xl border border-white/10 bg-[#111014] p-4"><h2 className="text-xs font-semibold uppercase tracking-[.16em] text-zinc-500">Behavior & boundaries</h2><p className="mt-2 text-sm text-zinc-200">{brain?.initiativeLevel === "CREATIVE" ? "Creative" : brain?.initiativeLevel === "DIRECTOR" ? "Director" : "Reactive"} initiative · flirt {Math.round(cp.flirtIntensity * 100)} · naughtiness {Math.round(cp.naughtiness * 100)}</p><p className="mt-2 text-xs leading-5 text-zinc-400">{cp.permissionStyle} {text(cp.boundaries)}</p></section>}
+    <section className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[#111014] p-4"><div><h2 className="font-semibold">References</h2><p className="mt-1 text-xs text-zinc-400">{refs.length} total · {canonicalCount} canonical</p></div><button onClick={onManageReferences} className="min-h-11 rounded-xl border border-fuchsia-300/20 px-3 text-xs font-semibold text-fuchsia-200">Manage References</button></section>
+    <details className="mt-3 rounded-2xl border border-white/10 bg-[#0e0d10] p-4"><summary className="min-h-7 cursor-pointer text-sm font-semibold text-zinc-300">Advanced</summary><div className="mt-4 space-y-3"><p className="text-xs text-zinc-500">Optional low-level identity and scene controls.</p><label className="label">Name<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label><label className="label">Handle<input value={form.handle} onChange={(e) => setForm({ ...form, handle: e.target.value })} /></label><label className="label">Profile description<textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label><label className="label">Visual identity notes<textarea value={form.identityNotes} onChange={(e) => setForm({ ...form, identityNotes: e.target.value })} /></label><label className="label">Personality<textarea value={form.personality} onChange={(e) => setForm({ ...form, personality: e.target.value })} /></label><label className="label">Optional scene defaults<textarea value={form.defaultsJson} onChange={(e) => setForm({ ...form, defaultsJson: e.target.value })} /></label><p className="text-xs text-zinc-500">Adult character: {brain?.adultCharacter ? "yes" : "no"} · age verification: {brain?.ageVerifiedAdult ? "explicitly verified" : "not verified"}</p>{brain?.adultCharacter && !brain.ageVerifiedAdult && <button type="button" onClick={async () => { if (!window.confirm(`Record explicit age verification for ${character.name}?`)) return; const response = await fetch("/api/director", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "verify-adult-age", characterId: character.id, confirmed: true }) }); const result = await response.json(); if (!response.ok) { setStatus(result.error ?? "Could not verify age."); return; } await refresh(); setStatus("Explicit verification recorded."); }} className="min-h-11 rounded-lg border border-amber-300/25 px-3 text-sm text-amber-100">Record explicit age verification</button>}<button onClick={() => void update()} className="min-h-11 rounded-lg bg-fuchsia-500 px-4 text-sm font-bold">Save advanced settings</button><span role="status" className="text-xs text-zinc-400">{status}</span></div></details>
+  </div>;
 }
 function JobCenter({
   data,

@@ -2,7 +2,7 @@ import { characterDirectorService } from "@/lib/character-director";
 import { repository } from "@/lib/repository";
 import type { CharacterProfile } from "@/lib/domain";
 
-type DirectorActionBody={action:string;conversationId?:string;characterId?:string;text?:string;mediaId?:string;proposalId?:string;rejectionReason?:string;variation?:string;manual?:boolean};
+type DirectorActionBody={action:string;conversationId?:string;characterId?:string;text?:string;mediaId?:string;proposalId?:string;rejectionReason?:string;variation?:string;manual?:boolean;confirmed?:boolean};
 const json=(value:unknown,status=200)=>Response.json(value,{status});
 
 export async function POST(request:Request){
@@ -30,12 +30,14 @@ export async function POST(request:Request){
     if(body.action==="profile-update"&&body.characterId){
       const current=repository.characterProfile(body.characterId);if(!current)return json({error:"Character profile not found"},404);
       const patch=body as unknown as {initiativeLevel?:string;adultCharacter?:boolean;ageVerifiedAdult?:boolean;creativeProfile?:Record<string,unknown>;conversationalProfile?:Record<string,unknown>};
+      if(patch.ageVerifiedAdult===true&&!current.ageVerifiedAdult)return json({error:"Age verification requires a separate explicit verification action."},409);
       if(patch.initiativeLevel&&!(["REACTIVE","CREATIVE","DIRECTOR"] as string[]).includes(patch.initiativeLevel))return json({error:"Invalid initiative level"},400);
       const profile:CharacterProfile={...current,characterId:body.characterId,initiativeLevel:(patch.initiativeLevel as CharacterProfile["initiativeLevel"]|undefined)??current.initiativeLevel,adultCharacter:patch.adultCharacter??current.adultCharacter,ageVerifiedAdult:patch.ageVerifiedAdult??current.ageVerifiedAdult,creativeProfile:{...current.creativeProfile,...patch.creativeProfile},conversationalProfile:{...current.conversationalProfile,...patch.conversationalProfile},updatedAt:new Date().toISOString()};
       if(profile.ageVerifiedAdult&&!profile.adultCharacter)return json({error:"Age-verified adult mode requires an explicitly adult character."},400);
       for(const key of ["creativeBoldness","noveltyPreference","repetitionTolerance","experimentationLevel","emotionalExpressiveness"]){const value=(key in profile.creativeProfile?profile.creativeProfile[key as keyof typeof profile.creativeProfile]:profile.conversationalProfile[key as keyof typeof profile.conversationalProfile]);if(typeof value==="number"&&(!Number.isFinite(value)||value<0||value>1))return json({error:`${key} must be between 0 and 1`},400);}
       return json(repository.saveCharacterProfile(profile));
     }
+    if(body.action==="verify-adult-age"&&body.characterId){if(body.confirmed!==true)return json({error:"Explicit confirmation is required."},400);return json(repository.recordAdultAgeVerification(body.characterId,true));}
     if(body.action==="pin"&&body.conversationId&&body.text?.trim())return json(repository.addPinnedMemory({conversationId:body.conversationId,category:"creative-context",body:body.text.trim().slice(0,500)}));
     if(body.action==="summarize"&&body.conversationId){const context=characterDirectorService.buildContext(body.conversationId);return json(context.conversationSummary);}
     return json({error:"Unsupported Character Director action"},400);
