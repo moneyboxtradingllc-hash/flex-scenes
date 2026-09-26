@@ -19,6 +19,7 @@ coverage/
 .artifacts/messages-hub-qa-data/
 .artifacts/messages-hub-qa-data-*
 .artifacts/reference-vault-qa-data-*
+.artifacts/local-runtime/
 .env*
 !.env.example
 *.log
