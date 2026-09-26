@@ -15,5 +15,7 @@ export default async function Catchall({ params, searchParams }: {
   if (slug.join("/") === "library" && process.env.NODE_ENV === "development" && process.env.FLEX_SCENES_LOCAL_QA === "1" && query.qaLibraryPolish === "1") {
     initial = withLibraryPolishFixtures(initial);
   }
-  return <StudioApp initial={initial} route={slug.join("/")} />;
+  const characterId = Array.isArray(query.characterId) ? query.characterId[0] : query.characterId;
+  const route = slug.join("/") === "character/references" ? `character/references/${characterId ?? ""}` : slug.join("/") === "character" && characterId ? `character/hub/${characterId}` : slug.join("/");
+  return <StudioApp initial={initial} route={route} />;
 }

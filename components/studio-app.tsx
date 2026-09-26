@@ -20,6 +20,8 @@ import { PremiumMediaDetail } from "@/components/media-detail";
 import { GenerationProgress } from "@/components/generation-surfaces";
 import { UiIcon } from "@/components/ui-icon";
 import { MobileAppShell } from "@/components/mobile-shell/mobile-app-shell";
+import { ReferenceVault } from "@/components/reference-vault";
+import { LibraryMediaThumbnail } from "@/components/library-media-thumbnail";
 
 type View =
   | "home"
@@ -34,6 +36,7 @@ type View =
   | "progress"
   | "result"
   | "collections"
+  | "reference-vault"
   | "lab";
 const icon: Record<string, string> = {
   home: "⌂",
@@ -71,13 +74,15 @@ export function StudioApp({
 }) {
   const [data, setData] = useState(initial);
   const [view, setView] = useState<View>(
-    route.startsWith("character")
+    route.startsWith("character/references")
+      ? "reference-vault"
+      : route.startsWith("character")
       ? "character"
       : (route.split("/")[0] as View) || "home",
   );
   const previousView = useRef<View>("home");
   const [activeCharacter, setActiveCharacter] = useState(
-    initial.characters[0]?.id,
+    initial.characters.find((item) => item.id === route.split("/")[2])?.id ?? initial.characters[0]?.id,
   );
   const [selected, setSelected] = useState<MediaAsset | null>(null);
   const [mobileThreadActive, setMobileThreadActive] = useState(false);
@@ -112,7 +117,8 @@ export function StudioApp({
     if (next !== view) previousView.current = view;
     setView(next);
     if (context) setCreateContext(context);
-    window.history.pushState({}, "", next === "home" ? "/" : `/${next}`);
+    const path = next === "home" ? "/" : next === "reference-vault" ? `/character/references?characterId=${encodeURIComponent(activeCharacter ?? "")}` : `/${next}`;
+    window.history.pushState({}, "", path);
   };
   const openJob = (job: GenerationJob) => {
     setSelectedJobId(job.id);
@@ -161,7 +167,7 @@ export function StudioApp({
   };
   const active =
     data.characters.find((c) => c.id === activeCharacter) ?? data.characters[0];
-  const isWideArchive = view === "explore" || view === "library";
+  const isWideArchive = view === "explore" || view === "library" || view === "reference-vault";
   const favorite = async (id: string) => {
     await fetch("/api/actions", {
       method: "POST",
@@ -286,8 +292,9 @@ export function StudioApp({
         </button>
       </aside>
       <section className="min-w-0 border-x border-white/5">
-        {header}
+        {view !== "reference-vault" && header}
         <div className={`studio-page-content mx-auto w-full ${view === "home" ? "home-page-content" : ""} ${view === "reels" ? "mobile-reels-page-content" : ""} ${view === "library" ? "mobile-library-page-content" : ""} ${isWideArchive ? "max-w-none" : "max-w-[900px]"} p-4 md:p-7`}>
+          {view === "reference-vault" && active && <ReferenceVault data={data} character={active} refresh={refresh} select={setSelected} back={() => go("character")} onCharacterChange={(id) => { setActiveCharacter(id); window.history.replaceState({}, "", `/character/references?characterId=${encodeURIComponent(id)}`); }} createCharacter={async (name, description) => { const response = await fetch("/api/actions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "character-create", name, description }) }); const created = await json<AppSnapshot["characters"][number]>(response); await refresh(); setActiveCharacter(created.id); window.history.replaceState({}, "", `/character/references?characterId=${encodeURIComponent(created.id)}`); return created; }} createWithReferences={(characterId, ids, roles) => { setActiveCharacter(characterId); go("create", { characterId, referenceAssetIds: ids, referenceAssetRoles: roles }); }} />}
           {view === "explore" && <PremiumExplore data={data} select={setSelected} openCharacter={(id) => { setActiveCharacter(id); go("character"); }} create={createFrom} />}{" "}
           {view === "create" && (
             <CapabilityCreate
@@ -342,15 +349,17 @@ export function StudioApp({
                 } else go(characterHubReturnView.current);
               }}
               openMessages={messageCharacter}
+              manageReferences={() => go("reference-vault")}
             />
           )}{" "}
           {view === "settings" && (
-            <CharacterSettings
-              data={data}
-              character={active}
-              refresh={refresh}
-              go={go}
-            />
+          <CharacterSettings
+            data={data}
+            character={active}
+            refresh={refresh}
+            go={go}
+            onManageReferences={() => go("reference-vault")}
+          />
           )}{" "}
           {view === "jobs" && (
             <JobCenter data={data} select={setSelected} refresh={refresh} openJob={openJob} />
@@ -362,7 +371,7 @@ export function StudioApp({
         </div>
       </section>
       {!isWideArchive && <ContextRail data={data} character={active} view={view} go={go} openConversation={openConversation} />}
-      <nav aria-label="Main navigation" className="app-bottom-nav fixed bottom-0 left-0 right-0 z-30 flex justify-around border-t border-white/10 bg-[#111218]/95 px-2 py-2 backdrop-blur md:hidden">
+      {view !== "reference-vault" && <nav aria-label="Main navigation" className="app-bottom-nav fixed bottom-0 left-0 right-0 z-30 flex justify-around border-t border-white/10 bg-[#111218]/95 px-2 py-2 backdrop-blur md:hidden">
         {nav.map(([id, label]) => (
           <button
             key={id}
@@ -375,7 +384,7 @@ export function StudioApp({
             <span className="bottom-nav-label">{label}</span>
           </button>
         ))}
-      </nav>
+      </nav>}
       {selected && (
         <PremiumMediaDetail
           key={selected.id}
@@ -681,11 +690,7 @@ function Explore({
             onClick={() => select(m)}
             className="relative overflow-hidden rounded-2xl bg-[#15161d]"
           >
-            <img
-              src={m.posterUrl ?? m.url}
-              alt={m.title}
-              className="aspect-square w-full object-cover"
-            />
+            <LibraryMediaThumbnail asset={m} alt={m.title} className="aspect-square w-full" />
             {m.type === "video" && (
               <span className="absolute bottom-2 right-2 rounded-full bg-black/60 px-2 py-1 text-xs">
                 ▶ Video
@@ -1139,11 +1144,7 @@ function LegacyCapabilityCreate({
                 onClick={() => toggle(asset.id)}
                 className={`relative overflow-hidden rounded-xl border ${refs.includes(asset.id) ? "border-fuchsia-400" : "border-transparent"}`}
               >
-                <img
-                  src={asset.posterUrl ?? asset.url}
-                  alt={asset.title}
-                  className="aspect-square w-full object-cover"
-                />
+                <LibraryMediaThumbnail asset={asset} alt={asset.title} className="aspect-square w-full" />
                 <span className="absolute inset-x-0 bottom-0 bg-black/65 px-1 py-1 text-[9px]">
                   {canonical.has(asset.id)
                     ? "Canonical"
@@ -1767,11 +1768,13 @@ function CharacterSettings({
   character,
   refresh,
   go,
+  onManageReferences,
 }: {
   data: AppSnapshot;
   character?: AppSnapshot["characters"][number];
   refresh: () => Promise<void>;
   go: (x: View) => void;
+  onManageReferences?: () => void;
 }) {
   const [form, setForm] = useState(character);
   const [brain, setBrain] = useState(data.characterProfiles.find((item) => item.characterId === character?.id));
@@ -1829,6 +1832,7 @@ function CharacterSettings({
         Visual identity and conversational personality remain deliberately
         separate.
       </p>
+      <button onClick={onManageReferences} className="mb-5 rounded-full border border-white/15 px-4 py-2 text-sm text-fuchsia-200">Manage References</button>
       <div className="grid gap-5 md:grid-cols-2">
         <section className="rounded-3xl border border-white/8 bg-[#13141b] p-5">
           <h2 className="mb-4 font-bold">Identity</h2>

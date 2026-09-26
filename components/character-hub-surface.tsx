@@ -16,10 +16,11 @@ type PremiumCharacterHubProps = {
   go: (destination: "messages" | "settings") => void;
   onBack?: () => void;
   openMessages?: (characterId: string) => void;
+  manageReferences?: () => void;
 };
 
 export function PremiumCharacterHub(props: PremiumCharacterHubProps) {
-  const { data, character, select, create, go, onBack, openMessages } = props;
+  const { data, character, select, create, go, onBack, openMessages, manageReferences } = props;
   const [tab, setTab] = useState<Tab>("Grid");
   const [thumbnailStates, setThumbnailStates] = useState<Record<string, ThumbnailState>>({});
   const onThumbnailStateChange = useCallback((assetId: string, state: ThumbnailState) => {
@@ -71,11 +72,11 @@ export function PremiumCharacterHub(props: PremiumCharacterHubProps) {
       <div className="mt-5 flex border-b border-white/8">{(["Grid", "Videos", "References", "Collections"] as Tab[]).map((item) => <button key={item} onClick={() => setTab(item)} className={`px-4 pb-3 text-sm font-semibold ${tab === item ? "border-b-2 border-fuchsia-400 text-white" : "text-zinc-500"}`}>{item}</button>)}</div>
       {tab === "Collections" ? <div className="grid grid-cols-2 gap-3 py-5">{collections.map((collection) => <div key={collection.id} className="rounded-2xl bg-white/[.045] p-4"><b>{collection.name}</b><p className="mt-1 text-xs text-zinc-500">{collection.assets.length} scenes</p></div>)}</div> : <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4">{shown.map((asset) => <button key={asset.id} onClick={() => select(asset)} className="group relative overflow-hidden rounded-xl bg-white/5"><LibraryMediaThumbnail asset={asset} alt={asset.title} className="aspect-square w-full object-cover transition duration-200 group-hover:scale-[1.03]" />{asset.type === "video" && <span className="absolute bottom-1 right-1 rounded-full bg-black/70 px-1.5 py-0.5 text-[10px]">▶</span>}</button>)}</div>}
     </div>
-    <MobileCharacterHub character={character} images={images} videos={videos} refs={refs} tab={tab} setTab={setTab} shown={shown} collections={collections} select={select} create={create} go={go} onBack={onBack} openMessages={openMessages} onThumbnailStateChange={onThumbnailStateChange} />
+    <MobileCharacterHub character={character} images={images} videos={videos} refs={refs} tab={tab} setTab={setTab} shown={shown} collections={collections} select={select} create={create} go={go} onBack={onBack} openMessages={openMessages} manageReferences={manageReferences} onThumbnailStateChange={onThumbnailStateChange} />
   </>;
 }
 
-function MobileCharacterHub({ character, images, videos, refs, tab, setTab, shown, collections, select, create, go, onBack, openMessages, onThumbnailStateChange }: {
+function MobileCharacterHub({ character, images, videos, refs, tab, setTab, shown, collections, select, create, go, onBack, openMessages, manageReferences, onThumbnailStateChange }: {
   character: Character;
   images: MediaAsset[];
   videos: MediaAsset[];
@@ -89,6 +90,7 @@ function MobileCharacterHub({ character, images, videos, refs, tab, setTab, show
   go: PremiumCharacterHubProps["go"];
   onBack?: () => void;
   openMessages?: (characterId: string) => void;
+  manageReferences?: () => void;
   onThumbnailStateChange: (assetId: string, state: ThumbnailState) => void;
 }) {
   const [activeCollectionId, setActiveCollectionId] = useState("");
@@ -107,9 +109,17 @@ function MobileCharacterHub({ character, images, videos, refs, tab, setTab, show
     <nav className="character-mobile-tabs" aria-label="Character media">{(["Grid", "Videos", "References", "Collections"] as Tab[]).map((item) => <button key={item} aria-pressed={tab === item} onClick={() => selectTab(item)}>{item}{item === "References" && <small>{refs.length}</small>}</button>)}</nav>
     {tab === "Collections" ? activeCollection ? <section className="character-mobile-collection-detail"><button onClick={() => setActiveCollectionId("")}>‹ Collections</button><h2>{activeCollection.name}</h2><div className="character-mobile-grid">{activeCollection.assets.map((asset, index) => <button key={asset.id} onClick={() => select(asset)} aria-label={`Open ${asset.title}`}><LibraryMediaThumbnail asset={asset} alt={asset.title} loading={index < 9 ? "eager" : "lazy"} />{asset.type === "video" && <span className="character-mobile-video-mark">▶</span>}</button>)}</div></section> : <div className="character-mobile-collections">{collections.length ? collections.map((collection) => <button key={collection.id} onClick={() => setActiveCollectionId(collection.id)}><span className={`character-mobile-cover ${collection.assets.length === 1 ? "is-single" : collection.assets.length === 2 ? "is-double" : collection.assets.length === 3 ? "is-triple" : ""}`}>{collection.assets.slice(0, 4).map((asset) => <LibraryMediaThumbnail key={asset.id} asset={asset} alt={asset.title} loading="eager" />)}</span><b>{collection.name}</b><small>{collection.assets.length} {collection.assets.length === 1 ? "scene" : "scenes"}</small></button>) : <p className="character-mobile-empty">No collections contain {character.name}&apos;s media yet.</p>}</div> : <>
       <div className="character-mobile-grid">{shown.map((asset, index) => <button key={asset.id} onClick={() => select(asset)} aria-label={`Open ${asset.title}`}><LibraryMediaThumbnail asset={asset} alt={asset.title} loading={index < 9 ? "eager" : "lazy"} onStateChange={onThumbnailStateChange} />{asset.type === "video" && <span className="character-mobile-video-mark">▶</span>}{tab === "References" && <small>{refs.find((reference) => reference.mediaId === asset.id)?.role ?? "Reference"}</small>}</button>)}</div>
+      {tab === "References" && <ReferenceSummary refs={refs} manage={manageReferences} />}
       {shown.length === 0 && <p className="character-mobile-empty">{tab === "References" ? "No character references yet." : tab === "Videos" ? "No videos in this character archive yet." : "No scenes yet."}</p>}
     </>}
   </div>;
+}
+
+function ReferenceSummary({ refs, manage }: { refs: AppSnapshot["characterReferences"]; manage?: () => void }) {
+  const active = refs.filter((item) => item.active);
+  const canonical = active.filter((item) => item.canonical).length;
+  const counts = ["face", "body", "outfit", "motion", "environment"].map((role) => [role, active.filter((item) => item.role === role).length] as const).filter(([, count]) => count > 0);
+  return <section className="character-reference-summary"><div><strong>Reference Vault</strong><small>{canonical} canonical · {active.length} active · {refs.length - active.length} inactive</small></div><div className="character-reference-summary-counts">{counts.map(([role, count]) => <span key={role}>{role} <b>{count}</b></span>)}</div><button onClick={manage}>Manage References <span aria-hidden="true">→</span></button></section>;
 }
 
 function profileCopy(description: string, personality: string) {

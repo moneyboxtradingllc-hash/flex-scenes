@@ -13,10 +13,12 @@ credentials.local.*
 secrets.local.*
 public/generated/
 public/imports/
+public/fixtures/scene-*.svg
 coverage/
 .artifacts/visual/
 .artifacts/messages-hub-qa-data/
 .artifacts/messages-hub-qa-data-*
+.artifacts/reference-vault-qa-data-*
 .env*
 !.env.example
 *.log
